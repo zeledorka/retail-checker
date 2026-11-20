@@ -107,7 +107,7 @@ left join public.bets b on b.player_id = p.id
 left join public.rounds r on r.id = b.round_id
 group by p.id;
 
--- ================= RPCs (called only by the server with the secret key) =================
+-- ================= Remote Procedure Calls (RPCs) - called only by the server with the secret key =================
 
 create or replace function public.place_bet(p_player uuid, p_round uuid, p_side text, p_stake int)
 returns int language plpgsql set search_path = public as $$

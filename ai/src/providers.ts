@@ -93,6 +93,14 @@ async function callAnthropic(config: ModelConfig, req: GenerateRequest): Promise
   }
 }
 
+function openRouterExtras(config: ModelConfig): Record<string, unknown> {
+  const extra: Record<string, unknown> = {};
+  if (config.temperature !== undefined) extra.temperature = config.temperature;
+  if (config.reasoning) extra.reasoning = { effort: config.reasoning };
+  if (config.routeSort) extra.provider = { sort: config.routeSort };
+  return extra;
+}
+
 async function callOpenRouter(config: ModelConfig, req: GenerateRequest): Promise<GenerateOutcome> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) return fail("config", "OPENROUTER_API_KEY is not set", config);
@@ -108,6 +116,7 @@ async function callOpenRouter(config: ModelConfig, req: GenerateRequest): Promis
       {
         model: config.model,
         max_tokens: config.maxOutputTokens,
+        ...openRouterExtras(config),
         messages: [
           { role: "system", content: req.system },
           { role: "user", content: req.prompt },
@@ -132,6 +141,7 @@ async function callOpenRouter(config: ModelConfig, req: GenerateRequest): Promis
         latencyMs,
         inputTokens: res.usage?.prompt_tokens,
         outputTokens: res.usage?.completion_tokens,
+        reasoningTokens: res.usage?.completion_tokens_details?.reasoning_tokens ?? undefined,
         costUsd: typeof cost === "number" ? cost : undefined,
       },
     };

@@ -1,6 +1,6 @@
 import { generateText as defaultGenerate } from "./providers";
 import { selectInjections } from "./injections";
-import { buildAgentPrompt, buildAgentSystem, buildJudgePrompt, JUDGE_SYSTEM, STAGE_ORDER } from "./prompts";
+import { buildAgentPrompt, buildAgentSystem, buildJudgePrompt, buildTurnPrompt, JUDGE_SYSTEM, STAGE_ORDER } from "./prompts";
 import { parseVerdict } from "./judge";
 import type {
   ArgumentOutput,
@@ -11,10 +11,12 @@ import type {
   JudgeResult,
   ModelCallEvent,
   ModelError,
+  NextTurnInput,
   Side,
   StageInput,
   StageResult,
   TranscriptEntry,
+  TurnResult,
 } from "./types";
 
 export type EngineOptions = {
@@ -24,11 +26,19 @@ export type EngineOptions = {
   onModelCall?: (event: ModelCallEvent) => void;
 };
 
+type FixedStage = Exclude<DebateStage, "turn">;
 const SIDES: Side[] = ["A", "B"];
-const WINDOW: Record<DebateStage, 1 | 2 | null> = { opening: null, rebuttal: 1, closing: 2 };
+const WINDOW: Record<FixedStage, 1 | 2 | null> = { opening: null, rebuttal: 1, closing: 2 };
+const DEFAULT_TURN_WORDS = 45;
 
 export const argumentKey = (roundId: string, stage: DebateStage, side: Side) => `${roundId}:${stage}:${side}`;
 export const verdictKey = (roundId: string) => `${roundId}:verdict`;
+/** Idempotency key of a sequential turn. A retry with the same transcript length yields the same key. */
+export const turnKey = (roundId: string, turn: number, side: Side) => `${roundId}:turn${turn}:${side}`;
+
+/** Only public fields ever leave this module toward a prompt: extra properties on entries are dropped. */
+const publicEntry = ({ stage, side, text, turn }: TranscriptEntry): TranscriptEntry =>
+  turn === undefined ? { stage, side, text } : { stage, side, text, turn };
 
 /** Returns a message if any of `required` stages is missing an argument from either side. */
 function missingHistory(required: DebateStage[], transcript: TranscriptEntry[]): string | null {
@@ -49,11 +59,17 @@ export function createDebateEngine(config: EngineConfig, options: EngineOptions 
     }
   };
 
-  async function runStage(stage: DebateStage, input: StageInput): Promise<StageResult> {
+  async function runStage(stage: FixedStage, input: StageInput): Promise<StageResult> {
     const { roundId, scenario, signal } = input;
-    // Only arguments from earlier stages are visible: both agents share the same snapshot.
-    const history = (input.transcript ?? []).filter((e) => STAGE_ORDER.indexOf(e.stage) < STAGE_ORDER.indexOf(stage));
-    const missing = missingHistory(STAGE_ORDER.slice(0, STAGE_ORDER.indexOf(stage)), history);
+    const stageIdx = STAGE_ORDER.indexOf(stage);
+    // Only arguments from earlier fixed stages are visible: both agents share the same snapshot.
+    const history = (input.transcript ?? [])
+      .filter((e) => {
+        const i = STAGE_ORDER.indexOf(e.stage);
+        return i !== -1 && i < stageIdx;
+      })
+      .map(publicEntry);
+    const missing = missingHistory(STAGE_ORDER.slice(0, stageIdx), history);
     if (missing) {
       const error: ModelError = { kind: "missing_history", message: missing, retryable: false };
       return { ok: false, roundId, stage, arguments: {}, errors: { A: error, B: error } };
@@ -65,7 +81,7 @@ export function createDebateEngine(config: EngineConfig, options: EngineOptions 
         const modelCfg = side === "A" ? config.agentA : config.agentB;
         const selected = window ? selectInjections(input.injections, side, window, config.injections) : [];
         const outcome = await generate(modelCfg, {
-          system: buildAgentSystem(side, scenario, config.argumentMaxWords),
+          system: buildAgentSystem(side, scenario, config.argumentMaxWords, input.personas?.[side]),
           prompt: buildAgentPrompt(side, stage, scenario, history, selected),
           signal,
         });
@@ -96,13 +112,61 @@ export function createDebateEngine(config: EngineConfig, options: EngineOptions 
     return { ok: false, roundId, stage, arguments: args, errors };
   }
 
+  /**
+   * Generates exactly one argument for `speaker` from the completed public transcript.
+   * The injection snapshot is taken synchronously at call time (before any await): submissions that arrive
+   * while the request is running are not included and can be passed on the speaker's next turn.
+   * The engine keeps no state; the caller stores the result and appends `argument.injectionIdsUsed`
+   * to its consumed set.
+   */
+  async function generateNextTurn(input: NextTurnInput): Promise<TurnResult> {
+    const { roundId, speaker, scenario, signal } = input;
+    const history = (input.transcript ?? []).map(publicEntry);
+    const turn = history.length + 1;
+    const fail = (error: ModelError): TurnResult => ({ ok: false, roundId, turn, speaker, error });
+    if (speaker !== "A" && speaker !== "B") return fail({ kind: "config", message: 'speaker must be "A" or "B"', retryable: false });
+
+    const selected = selectInjections(input.injections, speaker, undefined, config.injections, new Set(input.consumedInjectionIds ?? []));
+    const requested = input.maxWords ?? config.turnMaxWords ?? DEFAULT_TURN_WORDS;
+    const maxWords = Number.isFinite(requested) ? Math.max(10, Math.min(150, Math.floor(requested))) : DEFAULT_TURN_WORDS;
+    const base = speaker === "A" ? config.agentA : config.agentB;
+    const modelCfg = input.timeoutMs && input.timeoutMs > 0 ? { ...base, timeoutMs: Math.min(base.timeoutMs, input.timeoutMs) } : base;
+
+    const outcome = await generate(modelCfg, {
+      system: buildAgentSystem(speaker, scenario, maxWords, input.personas?.[speaker], Math.min(35, Math.floor(maxWords * 0.8))),
+      prompt: buildTurnPrompt(speaker, scenario, history, selected, turn),
+      signal,
+    });
+    notify({ roundId, role: speaker === "A" ? "agentA" : "agentB", stage: "turn", outcome });
+    if (!outcome.ok) return fail(outcome.error);
+
+    const { text, ...meta } = outcome.result;
+    return {
+      ok: true,
+      roundId,
+      turn,
+      argument: {
+        roundId,
+        stage: "turn",
+        turn,
+        side: speaker,
+        text,
+        key: turnKey(roundId, turn, speaker),
+        injectionIdsUsed: selected.map((s) => s.id),
+        meta,
+      },
+    };
+  }
+
   async function judgeDebate(input: JudgeInput): Promise<JudgeResult> {
     const { roundId, scenario, signal } = input;
     const key = verdictKey(roundId);
     // Only public arguments reach the judge: no injections, bets, balances or player data.
-    const transcript: TranscriptEntry[] = input.transcript.map(({ stage, side, text }) => ({ stage, side, text }));
-    const missing = missingHistory(STAGE_ORDER, transcript);
-    if (missing) return { ok: false, roundId, key, attempts: 0, error: { kind: "missing_history", message: missing, retryable: false } };
+    const transcript = input.transcript.map(publicEntry);
+    // A debate cut short is still judgeable, but both sides must have spoken at least once.
+    const silent = SIDES.find((side) => !transcript.some((e) => e.side === side && e.text.trim()));
+    if (silent)
+      return { ok: false, roundId, key, attempts: 0, error: { kind: "missing_history", message: `transcript has no argument from Agent ${silent}`, retryable: false } };
 
     const request = { system: JUDGE_SYSTEM, prompt: buildJudgePrompt(scenario, transcript), signal };
     const maxAttempts = 1 + Math.max(0, config.judgeParseRetries);
@@ -129,6 +193,7 @@ export function createDebateEngine(config: EngineConfig, options: EngineOptions 
   return {
     config,
     runStage,
+    generateNextTurn,
     generateOpeningArguments: (input: StageInput) => runStage("opening", input),
     generateRebuttals: (input: StageInput) => runStage("rebuttal", input),
     generateClosingArguments: (input: StageInput) => runStage("closing", input),

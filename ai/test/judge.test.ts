@@ -29,9 +29,13 @@ test("invalid judge JSON retries once then fails without inventing a winner", as
   assert.ok(!r.ok && r.error.kind === "invalid_output" && r.attempts === 2);
 });
 
-test("judge refuses to run on an incomplete transcript", async () => {
+test("judge accepts a cut-short debate but refuses when a side never spoke", async () => {
   const m = mockGenerate(() => verdict);
-  const r = await createDebateEngine(config, { generate: m.fn }).judgeDebate({ roundId: "r9", scenario, transcript: fullTranscript.slice(0, 4) });
+  const engine = createDebateEngine(config, { generate: m.fn });
+  const short = await engine.judgeDebate({ roundId: "r9", scenario, transcript: fullTranscript.slice(0, 2) });
+  assert.ok(short.ok);
+  m.calls.length = 0;
+  const r = await engine.judgeDebate({ roundId: "r9", scenario, transcript: fullTranscript.filter((e) => e.side === "A") });
   assert.ok(!r.ok && r.error.kind === "missing_history");
   assert.equal(m.calls.length, 0);
 });

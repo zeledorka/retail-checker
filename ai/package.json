@@ -9,8 +9,16 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test test/injections.test.ts test/prompts.test.ts test/debate.test.ts test/judge.test.ts",
-    "live": "tsx scripts/live-test.ts"
+    "test": "tsx --test test/injections.test.ts test/prompts.test.ts test/debate.test.ts test/judge.test.ts test/continuity.test.ts test/sequential.test.ts test/quality.test.ts test/all-claude.test.ts",
+    "live": "tsx scripts/live-test.ts",
+    "test:openings": "tsx scripts/test-deepseek-openings.ts",
+    "test:opinions": "tsx scripts/test-independent-opinions.ts",
+    "test:personas": "tsx scripts/test-persona-opinions.ts",
+    "test:injections": "tsx scripts/test-audience-injections.ts",
+    "test:debate": "tsx scripts/test-full-debate.ts",
+    "test:sequential": "tsx scripts/test-sequential-debate.ts",
+    "test:judge-consistency": "tsx scripts/test-judge-consistency.ts",
+    "test:all-claude": "tsx scripts/test-all-claude.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.11.0",

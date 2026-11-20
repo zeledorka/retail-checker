@@ -7,9 +7,9 @@ import { scenario, fullTranscript } from "./fixtures";
 test("agent system prompt assigns own and opposing interpretation", () => {
   const s = buildAgentSystem("B", scenario, 75);
   assert.match(s, /You are Agent B/);
-  assert.match(s, /You argue that: Someone framed Dave/);
-  assert.match(s, /Agent A, argues that: Dave ate the cake/);
-  assert.match(s, /At most 75 words/);
+  assert.match(s, /Your interpretation is: Someone framed Dave/);
+  assert.match(s, /Agent A, holds: Dave ate the cake/);
+  assert.match(s, /never exceed 75/);
 });
 
 test("injections are JSON-encoded so they cannot break the prompt structure", () => {

@@ -1,0 +1,25 @@
+{
+  "name": "ai-courtroom-ai",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AI Courtroom debate engine: dual agents + independent judge (Anthropic / OpenRouter).",
+  "engines": {
+    "node": ">=20.12"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/injections.test.ts test/prompts.test.ts test/debate.test.ts test/judge.test.ts",
+    "live": "tsx scripts/live-test.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.11.0",
+    "openai": "^7.62.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

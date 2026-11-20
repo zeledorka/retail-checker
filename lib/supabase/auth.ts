@@ -1,4 +1,3 @@
-// lib/supabase/auth.ts — server only
 import 'server-only';
 import { db } from './admin';
 export async function getUser(req: Request) {

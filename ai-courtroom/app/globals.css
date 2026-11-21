@@ -1,26 +1,21 @@
 @import "tailwindcss";
 
-/* Balloon theme-park tokens (the ONLY place colours are defined; components use var(--color-*) / Tailwind classes).
-   Agent A = CHERRY balloon (warm red-pink) + triangle, Agent B = GRAPE balloon (purple) + diamond.
-   (B is purple, not blue, so it stands out on the sky-blue background.) */
+/* Kahoot-style layout, courtroom-mahogany palette (the ONLY place colours are defined; components use
+   var(--color-*) / Tailwind classes). Agent A = ORANGE-RED + triangle, Agent B = BRIGHT BLUE + diamond. */
 @theme {
   --font-sans: var(--font-nunito), ui-rounded, system-ui, sans-serif;
-  --color-court: #1f8fff;       /* bright sky (main background / brand) */
-  --color-court-dark: #1646c8;  /* deep sky */
-  --color-court-light: #ff7ac6; /* bubblegum (judging badge etc.) */
-  --color-agent-a: #ff2e63;     /* cherry balloon */
-  --color-agent-a-dark: #c8114a;
-  --color-agent-b: #8a2be2;     /* grape balloon */
-  --color-agent-b-dark: #6316b0;
-  --color-gold: #ffd60a;        /* lemon balloon */
-  --color-gold-dark: #e0a800;
-  --color-win: #12a150;         /* lime balloon */
-  --color-win-dark: #0c7a3c;
-  --color-ink: #1d1b3a;
-  /* Extra balloon colours, used by the floating background balloons only. */
-  --color-balloon-mint: #00e0b8;
-  --color-balloon-orange: #ff8a00;
-  --color-balloon-pink: #ff5fd2;
+  --color-court: #6b1a35;       /* mahogany / wine (brand, badges, labels on cards) */
+  --color-court-dark: #2a0815;  /* darkest panel (timer face, sticky header) */
+  --color-court-light: #a8325a; /* lighter wine (judging badge) */
+  --color-agent-a: #ff5a1f;     /* orange-red, so it doesn't blend into the wine background */
+  --color-agent-a-dark: #c73d0b;
+  --color-agent-b: #1e90ff;     /* bright blue */
+  --color-agent-b-dark: #0f63c2;
+  --color-gold: #ffc531;        /* courtroom gold */
+  --color-gold-dark: #d99a00;
+  --color-win: #26a65b;
+  --color-win-dark: #1b7a42;
+  --color-ink: #1f1418;
 
   --animate-pop: pop 0.45s cubic-bezier(0.2, 1.6, 0.4, 1) both;
   --animate-slide-up: slide-up 0.45s cubic-bezier(0.2, 1.2, 0.4, 1) both;
@@ -39,11 +34,10 @@
 
 html, body { height: 100%; }
 body {
-  /* Bright theme-park sky with candy-coloured glows (lemon, bubblegum, mint). */
-  background: radial-gradient(900px 650px at 8% -10%, rgb(255 214 10 / 0.45) 0%, transparent 60%),
-    radial-gradient(900px 650px at 100% 0%, rgb(255 95 210 / 0.4) 0%, transparent 55%),
-    radial-gradient(1000px 700px at 50% 120%, rgb(0 224 184 / 0.35) 0%, transparent 60%),
-    linear-gradient(170deg, #38b0ff 0%, var(--color-court) 40%, #4a4dff 100%);
+  /* Dark mahogany with a warm gold "courtroom lamp" glow from the top and a faint wine glow bottom right. */
+  background: radial-gradient(1200px 700px at 50% -20%, rgb(255 180 0 / 0.22) 0%, transparent 60%),
+    radial-gradient(900px 600px at 105% 110%, rgb(168 50 90 / 0.35) 0%, transparent 55%),
+    linear-gradient(170deg, #3a0d1f 0%, #2c0918 55%, #1f0610 100%);
   background-attachment: fixed;
   color: white;
   -webkit-tap-highlight-color: transparent;
@@ -76,32 +70,12 @@ body {
 }
 @keyframes waiting-slide { 0% { transform: translateX(-100%) } 100% { transform: translateX(250%) } }
 
-/* Floating background balloons (components/Balloons.tsx). Behind everything, never clickable.
-   Plain CSS keyframes on purpose (keyframes inside @theme are dropped unless an --animate-* token uses them). */
-.balloons { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
-.balloon {
-  position: absolute; width: 70px; height: 86px; opacity: 0.55;
-  border-radius: 50% 50% 48% 52% / 58% 58% 42% 42%;
-  background: radial-gradient(circle at 32% 28%, rgb(255 255 255 / 0.75) 0 8%, transparent 26%), var(--c);
-  box-shadow: inset -8px -10px 0 rgb(0 0 0 / 0.12);
-  animation: balloon-bob var(--d, 6s) ease-in-out infinite;
-}
-.balloon::before { /* knot */
-  content: ""; position: absolute; left: 50%; bottom: -6px; transform: translateX(-50%);
-  border: 6px solid transparent; border-bottom: 8px solid var(--c); border-top: 0;
-}
-.balloon::after { /* string */
-  content: ""; position: absolute; left: 50%; top: calc(100% + 2px); width: 2px; height: 90px; background: rgb(255 255 255 / 0.55);
-}
-@keyframes balloon-bob { 0%, 100% { transform: translateY(0) rotate(-3deg) } 50% { transform: translateY(-18px) rotate(3deg) } }
-
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { scrollbar-width: none; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; }
   .reveal-text { animation: none; }
-  .balloon { animation: none; }
   /* Static striped bar instead of a sliding one. */
   .waiting-bar::after {
     animation: none !important; width: 100%;

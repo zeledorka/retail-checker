@@ -66,7 +66,7 @@ export function BetPanel({ tokens, bet, open, positions, onBet }: Props) {
           <span className="text-2xl">🪙 {stake}</span>
         </div>
         <input id="stake" type="range" min={1} max={tokens} value={Math.min(stake, tokens)} onChange={(e) => setStake(Number(e.target.value))}
-          className="mt-2 w-full accent-[#46178f]" disabled={busy} />
+          className="mt-2 w-full accent-court" disabled={busy} />
         <div className="mt-3 grid grid-cols-4 gap-2">
           {CHIPS.map((c) => (
             <button key={c} type="button" disabled={busy || c > tokens} onClick={() => setStake(c)}

@@ -81,9 +81,9 @@ export function ScoreBars({ v, big = false }: { v: UiVerdict; big?: boolean }) {
   return (
     <div className={`card ${big ? "p-6" : "p-4"}`}>
       <div className={`mb-2 flex justify-between font-black ${big ? "text-2xl" : "text-sm"}`}>
-        <span className="flex items-center gap-1 text-agent-a"><AgentIcon side="A" className="w-4 h-4" color="#e21b3c" /> A {v.overall ? v.overall.A : ""}</span>
+        <span className="flex items-center gap-1 text-agent-a"><AgentIcon side="A" className="w-4 h-4" color={SIDE.A.hex} /> A {v.overall ? v.overall.A : ""}</span>
         <span className="text-ink/60">Score /10</span>
-        <span className="flex items-center gap-1 text-agent-b">{v.overall ? v.overall.B : ""} B <AgentIcon side="B" className="w-4 h-4" color="#1368ce" /></span>
+        <span className="flex items-center gap-1 text-agent-b">{v.overall ? v.overall.B : ""} B <AgentIcon side="B" className="w-4 h-4" color={SIDE.B.hex} /></span>
       </div>
       <div className={`grid ${big ? "gap-4" : "gap-2"}`}>
         {DIMS.map((d, i) => (

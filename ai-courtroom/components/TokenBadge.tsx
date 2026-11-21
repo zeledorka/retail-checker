@@ -19,7 +19,7 @@ export function TokenBadge({ tokens, className = "" }: { tokens: number; classNa
     return () => { cancelAnimationFrame(raf); from.current = tokens; };
   }, [tokens]);
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full bg-gold px-3 py-1 font-black text-ink shadow-[0_3px_0_#c27c00] ${className}`} aria-label={`${tokens} tokens`}>
+    <span className={`inline-flex items-center gap-1.5 rounded-full bg-gold px-3 py-1 font-black text-ink shadow-[0_3px_0_var(--color-gold-dark)] ${className}`} aria-label={`${tokens} tokens`}>
       <span className="grid h-5 w-5 place-items-center rounded-full bg-yellow-200 text-[11px]">🪙</span>
       {shown}
     </span>

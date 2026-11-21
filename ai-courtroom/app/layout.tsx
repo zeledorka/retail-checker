@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   title: "AI Courtroom",
   description: "Bet on the AI lawyer you believe. Whisper them a tip. Hear the verdict.",
 };
-export const viewport: Viewport = { themeColor: "#46178f", width: "device-width", initialScale: 1 };
+export const viewport: Viewport = { themeColor: "#0f8b8d", width: "device-width", initialScale: 1 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (

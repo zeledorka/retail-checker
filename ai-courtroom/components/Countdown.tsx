@@ -10,7 +10,7 @@ export function Countdown({ deadline, start, offset, size = 64, className = "" }
   return (
     <div className={`relative shrink-0 ${urgent && seconds > 0 ? "animate-pulse" : ""} ${className}`} style={{ width: size, height: size }} role="timer" aria-label={`${seconds} seconds left`}>
       <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
-        <circle cx="50" cy="50" r="48" fill={urgent ? "#e21b3c" : "#25076b"} />
+        <circle cx="50" cy="50" r="48" style={{ fill: urgent ? "var(--color-agent-a)" : "var(--color-court-dark)" }} />
         <circle cx="50" cy="50" r={r} fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="8" />
         <circle cx="50" cy="50" r={r} fill="none" stroke="white" strokeWidth="8" strokeLinecap="round"
           strokeDasharray={c} strokeDashoffset={c * (1 - (fraction ?? 1))} style={{ transition: "stroke-dashoffset 250ms linear" }} />

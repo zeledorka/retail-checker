@@ -1,20 +1,21 @@
 @import "tailwindcss";
 
-/* Kahoot-style theme tokens. Agent A = RED + triangle, Agent B = BLUE + diamond. */
+/* Summer theme tokens (the ONLY place colours are defined; components use var(--color-*) / Tailwind classes).
+   Agent A = CORAL (warm red) + triangle, Agent B = SEA BLUE + diamond. */
 @theme {
   --font-sans: var(--font-nunito), ui-rounded, system-ui, sans-serif;
-  --color-court: #46178f;
-  --color-court-dark: #25076b;
-  --color-court-light: #864cbf;
-  --color-agent-a: #e21b3c;
-  --color-agent-a-dark: #a8102a;
-  --color-agent-b: #1368ce;
-  --color-agent-b-dark: #0b4a95;
-  --color-gold: #ffa602;
-  --color-gold-dark: #c27c00;
-  --color-win: #26890c;
-  --color-win-dark: #1a5f08;
-  --color-ink: #1c1c28;
+  --color-court: #0f8b8d;       /* lagoon teal (main background / brand) */
+  --color-court-dark: #0a5f63;  /* deep sea */
+  --color-court-light: #3cc8c0; /* shallow water */
+  --color-agent-a: #f0544f;     /* coral */
+  --color-agent-a-dark: #c73b37;
+  --color-agent-b: #2b6fd6;     /* sea blue */
+  --color-agent-b-dark: #1d4fa0;
+  --color-gold: #ffc93c;        /* sunshine */
+  --color-gold-dark: #e0a400;
+  --color-win: #2f9e44;         /* palm green */
+  --color-win-dark: #237a34;
+  --color-ink: #1f2933;
 
   --animate-pop: pop 0.45s cubic-bezier(0.2, 1.6, 0.4, 1) both;
   --animate-slide-up: slide-up 0.45s cubic-bezier(0.2, 1.2, 0.4, 1) both;
@@ -33,8 +34,10 @@
 
 html, body { height: 100%; }
 body {
-  background: radial-gradient(1200px 800px at 15% -10%, #864cbf 0%, transparent 60%),
-    radial-gradient(1000px 700px at 110% 110%, #5f2db0 0%, transparent 55%), #46178f;
+  /* Lagoon with a soft sunshine glow (top left) and a sunset glow (bottom right). */
+  background: radial-gradient(1100px 750px at 10% -15%, rgb(255 201 60 / 0.35) 0%, transparent 60%),
+    radial-gradient(1000px 700px at 110% 115%, rgb(255 138 92 / 0.4) 0%, transparent 55%),
+    linear-gradient(160deg, #14a3a3 0%, var(--color-court) 45%, var(--color-court-dark) 100%);
   background-attachment: fixed;
   color: white;
   -webkit-tap-highlight-color: transparent;

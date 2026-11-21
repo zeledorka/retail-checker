@@ -4,6 +4,8 @@
  *   npx tsx --env-file=.env scripts/dev/simulate.ts               full 5-round game until GAME_OVER (server: AI_MODE=mock)
  *   npx tsx --env-file=.env scripts/dev/simulate.ts --judge-fail  server started with MOCK_JUDGE_FAIL=1:
  *                                                                 round 1 must be CANCELLED with one refund per bettor
+ *   npx tsx --env-file=.env scripts/dev/simulate.ts --poll-autopilot  server-side autopilot: NO /api/admin/tick calls;
+ *                                                                 3 clients poll /api/state every 1.5s until round 1 RESULTS
  *   BASE_URL=http://localhost:3001 ...                            other server
  *
  * RESETS THE ACTIVE GAME. Creates 5 anonymous Supabase users per run. Full game takes ~5-6 minutes.
@@ -21,6 +23,8 @@ const JUDGE_FAIL = process.argv.includes('--judge-fail');
 // --one-round: stop after round 1 RESULTS and print a report (timings, transcript, verdict, clues). For live AI runs:
 // the debate may end on the clock, so 1-8 turns are accepted instead of exactly 8.
 const ONE_ROUND = process.argv.includes('--one-round');
+// --poll-autopilot: the game is driven only by GET /api/state polls (after() + tick() on the server).
+const POLL_AUTOPILOT = process.argv.includes('--poll-autopilot');
 const WAIT_TIMEOUT_MS = 180_000;
 const CLUE = 'The lock has no scratches, so a key was used.';
 const BOB_CLUE = 'The insurance renewal was due that same week. Ask who benefits.';
@@ -95,7 +99,7 @@ async function main() {
     if (!v) throw new Error(`${k} missing: run with --env-file=.env`);
   }
   const db = createClient(URL_!, SECRET!, { auth: { persistSession: false } });   // read-only checks of ledger/verdicts
-  console.log(`simulate: ${BASE} mode=${JUDGE_FAIL ? 'judge-fail' : ONE_ROUND ? 'one round' : 'full game'}`);
+  console.log(`simulate: ${BASE} mode=${POLL_AUTOPILOT ? 'poll-autopilot' : JUDGE_FAIL ? 'judge-fail' : ONE_ROUND ? 'one round' : 'full game'}`);
 
   // ---------- admin auth: every admin route rejects a missing / wrong secret (before anything changes) ----------
   const adminRoutes: [string, unknown][] = [
@@ -103,12 +107,15 @@ async function main() {
     ['/api/admin/advance', { expectedPhase: 'REVEAL' }],
     ['/api/admin/run-ai', { roundId: '00000000-0000-0000-0000-000000000000', expectedPhase: 'OPENINGS' }],
     ['/api/admin/cancel', { roundId: '00000000-0000-0000-0000-000000000000' }],
+    ['/api/admin/autopilot', { enabled: true }],
   ];
   for (const [path, body] of adminRoutes) {
     const none = await call('POST', path, { body });
     const wrong = await call('POST', path, { body, admin: 'wrong-secret' });
     check(`${path} without / with wrong x-admin-secret → 403`, none.status === 403 && wrong.status === 403 && errCode(none) === 'FORBIDDEN', [none.status, wrong.status]);
   }
+
+  if (POLL_AUTOPILOT) { await pollAutopilot(db); return finish(); }
 
   // ---------- setup ----------
   const reset = await call('POST', '/api/admin/reset', { admin: true });
@@ -336,8 +343,111 @@ async function main() {
       lb.body.players.every((e: any, i: number, arr: any[]) => i === 0 || arr[i - 1].tokens >= e.tokens), lb.body?.players?.slice(0, 6));
   }
 
+  finish();
+}
+
+function finish() {
   console.log(failures === 0 ? '\nALL CHECKS PASSED' : `\n${failures} CHECK(S) FAILED`);
   if (failures) process.exitCode = 1;
+}
+
+/**
+ * --poll-autopilot: reset, join 3 players, start (which turns autopilot on), then ONLY poll GET /api/state every 1.5s
+ * from 3 clients (no /api/admin/tick, no autopilot.ts). Bets and one clue are placed when the phase allows.
+ * Round 1 must reach RESULTS with each winner paid exactly once; then autopilot off must freeze the game.
+ */
+async function pollAutopilot(db: any) {
+  const bad = await call('POST', '/api/admin/autopilot', { admin: true, body: { enabled: 'yes' } });
+  check('autopilot with a non-boolean body → 400', bad.status === 400 && errCode(bad) === 'BAD_REQUEST', bad.body);
+  const reset = await call('POST', '/api/admin/reset', { admin: true });
+  if (reset.status !== 200) throw new Error(`reset failed: ${reset.status} ${JSON.stringify(reset.body)}`);
+  check('after reset: game.autopilot = false', (await state())?.game?.autopilot === false);
+  const clients = [await newPlayer('SimAlice'), await newPlayer('SimBob'), await newPlayer('SimCarol')];
+  const [alice, bob, carol] = clients;
+
+  const start = await call('POST', '/api/admin/start', { admin: true });
+  check('start round 1 → REVEAL', start.status === 200 && start.body?.phase === 'REVEAL', start.body);
+  check('start turned autopilot on (public game.autopilot = true)', (await state())?.game?.autopilot === true);
+
+  const plan = [{ p: alice, side: 'A' as const, stake: 20 }, { p: bob, side: 'B' as const, stake: 30 }, { p: carol, side: 'A' as const, stake: 10 }];
+  const betDone = new Set<string>();
+  let clueDone = false, polls = 0, pollErrors = 0, slowestMs = 0, roundId = '', final: any = null;
+  const seen: string[] = [];
+  const deadline = Date.now() + WAIT_TIMEOUT_MS;
+
+  while (!final && Date.now() < deadline) {
+    // 3 clients poll at the same moment (→ concurrent ticks on the server), then wait 1.5s.
+    const t0 = Date.now();
+    const results = await Promise.all(clients.map((c) => call('GET', '/api/state', { token: c.token })));
+    slowestMs = Math.max(slowestMs, Date.now() - t0);
+    polls += results.length;
+    pollErrors += results.filter((r) => r.status !== 200).length;
+    const s = results.find((r) => r.status === 200)?.body;
+    const phase = s?.round?.phase;
+    if (phase && seen.at(-1) !== phase) { seen.push(phase); console.log(ts(), `── r${s.round.roundNumber} ${phase} (ai ${s.round.aiStepStatus}, turns ${s.round.turnsCompleted})`); }
+    if (s?.round) roundId = s.round.id;
+    if (phase === 'BETTING') {
+      for (const b of plan) if (!betDone.has(b.p.id)) {
+        const r = await call('POST', '/api/bet', { token: b.p.token, body: { roundId, side: b.side, stake: b.stake } });
+        if (r.status === 200) betDone.add(b.p.id); else console.log(ts(), `   bet ${b.p.name} failed`, r.status, JSON.stringify(r.body));
+      }
+    }
+    if (!clueDone && (phase === 'OPENINGS' || phase === 'DEBATE')) {
+      const r = await call('POST', '/api/inject', { token: alice.token, body: { roundId, text: CLUE } });
+      clueDone = r.status === 200;
+    }
+    if (phase === 'RESULTS' || phase === 'CANCELLED') final = s;
+    else await sleep(1500);
+  }
+  if (!final) throw new Error(`timed out waiting for RESULTS via polling (phases seen: ${seen.join(' → ')})`);
+
+  check('phases advanced by polling alone: REVEAL → BETTING → OPENINGS → DEBATE → JUDGING → RESULTS',
+    seen.join(',') === 'REVEAL,BETTING,OPENINGS,DEBATE,JUDGING,RESULTS', seen);
+  check(`all ${polls} polls returned 200`, pollErrors === 0, { pollErrors, slowestPollBatchMs: slowestMs });
+  check('3 bets + 1 clue accepted during the polled round', betDone.size === 3 && clueDone, { bets: betDone.size, clueDone });
+  const w = final.round.winner;
+  check('RESULTS with a winner and a full 8-turn debate', (w === 'A' || w === 'B') && final.round.turnsCompleted === 8 && final.round.verdict?.complete === true,
+    { winner: w, turns: final.round.turnsCompleted });
+
+  // Keep 3 clients polling a bit longer (more overlapping ticks), then check settlement happened exactly once.
+  for (let i = 0; i < 3; i++) { await Promise.all(clients.map((c) => call('GET', '/api/state', { token: c.token }))); await sleep(300); }
+  const ids = clients.map((c) => c.id);
+  const [{ data: ledger }, { data: rows }, { data: rnd }] = await Promise.all([
+    db.from('token_ledger').select('player_id, type, delta').eq('round_id', roundId),
+    db.from('players').select('id, tokens').in('id', ids),
+    db.from('rounds').select('settled_at').eq('id', roundId).single(),
+  ]);
+  const payouts = (ledger ?? []).filter((l: any) => l.type === 'payout');
+  const winners = plan.filter((b) => b.side === w);
+  const exp: Record<string, number> = Object.fromEntries(plan.map((b) => [b.p.id, 100 - b.stake + (b.side === w ? 2 * b.stake : 0)]));
+  check(`exactly one payout per winner (${winners.length}), each 2× stake, round settled`,
+    payouts.length === winners.length && winners.every((b) => payouts.some((l: any) => l.player_id === b.p.id && l.delta === 2 * b.stake)) && !!rnd?.settled_at,
+    payouts);
+  check('balances = 100 − stake (+ 2× stake if right)', (rows ?? []).length === 3 && (rows ?? []).every((r: any) => r.tokens === exp[r.id]),
+    Object.fromEntries((rows ?? []).map((r: any) => [clients.find((c) => c.id === r.id)!.name, r.tokens])));
+
+  // Autopilot off → polls past the deadline must not advance. A tick scheduled just before "off" may still finish,
+  // so wait 1s, snapshot, then poll until 3s past the snapshot's deadline and require that nothing moved.
+  const off = await call('POST', '/api/admin/autopilot', { admin: true, body: { enabled: false } });
+  check('POST /api/admin/autopilot {enabled:false} → { autopilot: false }', off.status === 200 && off.body?.autopilot === false, off.body);
+  await sleep(1000);
+  const snap = await state();
+  const until = Date.parse(snap.round.phaseEndsAt) + 3000;
+  while (Date.now() < until) { await Promise.all(clients.map((c) => call('GET', '/api/state', { token: c.token }))); await sleep(1500); }
+  const frozen = await state();
+  check('autopilot off: polls past the phase deadline do not advance the game',
+    frozen?.game?.autopilot === false && frozen?.round?.id === snap.round.id && frozen?.round?.phase === snap.round.phase,
+    { before: `r${snap.round.roundNumber} ${snap.round.phase}`, after: `r${frozen?.round?.roundNumber} ${frozen?.round?.phase}` });
+
+  // Autopilot on again → the next poll moves on to round 2.
+  const on = await call('POST', '/api/admin/autopilot', { admin: true, body: { enabled: true } });
+  const moved = (s: any) => !!s?.round && (s.round.id !== frozen.round.id || s.round.phase !== frozen.round.phase);
+  let resumed: any = null;
+  for (let i = 0; i < 6 && !moved(resumed); i++) { await state(); await sleep(1000); resumed = await state(); }
+  check('autopilot back on: the next polls advance the game again', on.body?.autopilot === true &&
+    (resumed?.round?.id !== frozen.round.id || resumed?.round?.phase !== frozen.round.phase),
+    { before: `r${frozen.round.roundNumber} ${frozen.round.phase}`, after: `r${resumed?.round?.roundNumber} ${resumed?.round?.phase}` });
+  await call('POST', '/api/admin/autopilot', { admin: true, body: { enabled: false } }); // leave the DB quiet
 }
 
 main().catch((e) => { console.error('FAIL  simulation aborted:', e instanceof Error ? e.message : e); process.exit(1); });

@@ -9,8 +9,6 @@ import { fail, fromDbError } from '@/lib/game/errors';
  * Zod schema = a runtime validator for the request body.
  * TypeScript types disappear at runtime, so they can't protect you from a malicious
  * request. Zod checks the ACTUAL incoming data.
- *   .trim()        strip spaces around the nickname
- *   .min(1).max(20) must match the DB check constraint
  */
 const Body = z.object({
   nickname: z.string().trim().min(1, 'Nickname required').max(20, 'Max 20 characters'),

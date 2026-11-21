@@ -128,7 +128,8 @@ function buildState(s: MockStore, playerId: string | null, now: number): UiGameS
       turnsCompleted, maxTurns: MAX_TURNS,
       nextSpeaker: pending ? MOCK_LINES[n].side : null,
       bettingOpen: phase === "betting",
-      suggestionsOpen: phase === "debate" && e < T.suggestionsClose,
+      // Same rule as the real backend: clues accepted during OPENINGS and DEBATE.
+      suggestionsOpen: (phase === "openings" || phase === "debate") && e < T.suggestionsClose,
       betTotals: totals(s),
     };
   }

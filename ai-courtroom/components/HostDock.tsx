@@ -3,11 +3,11 @@
 // Rendered only after admin unlock; the secret lives in sessionStorage (never the URL).
 import { useEffect, useRef, useState } from "react";
 import { admin, friendly, USE_MOCK } from "@/lib/api";
-import type { UiGameState } from "@/lib/types";
+import type { AdminResult, UiGameState } from "@/lib/types";
 import { MockSwitcher } from "./MockSwitcher";
 import { PHASE_LABEL } from "./sides";
 
-type Toast = { id: number; text: string; kind: "ok" | "err" };
+type Toast = { id: number; text: string; kind: "ok" | "info" | "err" };
 type Action = "start" | "advance" | "ai" | "cancel";
 
 export function HostDock({ state, secret, onLock, refetch, idle, onSkipVerdict }: {
@@ -27,10 +27,10 @@ export function HostDock({ state, secret, onLock, refetch, idle, onSkipVerdict }
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), kind === "err" ? 6000 : 3000);
   };
 
-  const run = async (a: Action, fn: () => Promise<{ detail?: string }>) => {
+  const run = async (a: Action, fn: () => Promise<AdminResult>) => {
     if (busy) return; // one request at a time: Run AI is slow and must not double-fire
     setBusy(a);
-    try { const r = await fn(); toast(r.detail ?? "Done", "ok"); await refetch(); }
+    try { const r = await fn(); toast(r.detail ?? "Done", r.kind === "error" ? "err" : r.kind ?? "ok"); await refetch(); }
     catch (e) { toast(friendly(e), "err"); }
     finally { setBusy(null); }
   };
@@ -43,7 +43,7 @@ export function HostDock({ state, secret, onLock, refetch, idle, onSkipVerdict }
   return (
     <div className={`fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2 transition-opacity duration-500 ${hidden ? "pointer-events-none opacity-0" : "opacity-100"}`}>
       {toasts.map((t) => (
-        <div key={t.id} role="status" className={`animate-slide-up max-w-72 rounded-lg px-3 py-1.5 text-xs font-black shadow ${t.kind === "ok" ? "bg-win text-white" : "bg-agent-a text-white"}`}>{t.text}</div>
+        <div key={t.id} role="status" className={`animate-slide-up max-w-72 rounded-lg px-3 py-1.5 text-xs font-black shadow ${t.kind === "ok" ? "bg-win text-white" : t.kind === "info" ? "bg-white text-ink" : "bg-agent-a text-white"}`}>{t.text}</div>
       ))}
 
       {open && (

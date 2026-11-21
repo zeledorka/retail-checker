@@ -102,7 +102,7 @@ function Game({ state, offset, error, refetch }: { state: UiGameState; offset: n
   const roundOver = state.phase === "results" || state.phase === "cancelled";
 
   const onBet = async (side: Side, stake: number) => { await placeBet(r!.id, side, stake); await refetch(); };
-  const onSend = async (text: string) => { await sendSuggestion(r!.id, r!.rawPhase, text); await refetch(); };
+  const onSend = async (text: string) => { await sendSuggestion(r!.id, text); await refetch(); };
 
   return (
     <>
@@ -151,9 +151,8 @@ function Game({ state, offset, error, refetch }: { state: UiGameState; offset: n
             </div>
             <MyBetStrip state={state} />
             <Transcript items={state.transcript} thinking={r.nextSpeaker} className="max-h-[45vh] rounded-2xl bg-black/15 p-3" />
-            {state.phase === "openings" && !me.suggestion
-              ? <div className="rounded-2xl bg-white/15 p-4 text-center font-bold">💡 Suggestions open once the openings are done.</div>
-              : <SuggestionBox betSide={me.bet?.side ?? null} open={r.suggestionsOpen && !expired} sent={me.suggestion} onSend={onSend} />}
+            {/* Clues are accepted during OPENINGS and DEBATE until the phase deadline (server rule), one per round. */}
+            <SuggestionBox betSide={me.bet?.side ?? null} open={r.suggestionsOpen && !expired} sent={me.suggestion} onSend={onSend} />
           </>
         )}
 

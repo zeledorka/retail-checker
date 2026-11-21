@@ -4,7 +4,7 @@ import { friendly } from "@/lib/api";
 import type { Side } from "@/lib/types";
 import { AgentIcon, SIDE } from "./sides";
 
-const MAX = 200; // the AI module cuts audience text at 200 characters
+const MAX = 200; // server rule (/api/inject: 1-200 chars) and the AI module's cut-off
 
 type Props = {
   betSide: Side | null;
@@ -49,7 +49,7 @@ export function SuggestionBox({ betSide, open, sent, onSend }: Props) {
           <AgentIcon side={betSide} className="w-3.5 h-3.5" /> {SIDE[betSide].name}
         </span>
       </label>
-      <textarea id="tip" value={text} onChange={(e) => setText(e.target.value.slice(0, MAX))} disabled={busy} rows={3}
+      <textarea id="tip" value={text} onChange={(e) => setText(e.target.value.slice(0, MAX))} maxLength={MAX} disabled={busy} rows={3}
         placeholder="e.g. Point out that the room was locked overnight!"
         className="mt-2 w-full resize-none rounded-xl border-4 border-court/20 p-3 font-bold outline-none focus:border-court" />
       <div className="mt-1 flex items-center justify-between text-sm font-bold text-ink/60">

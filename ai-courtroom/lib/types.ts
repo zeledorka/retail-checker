@@ -140,4 +140,5 @@ export class ApiError extends Error {
 
 export type JoinResult = { nickname: string; tokens: number };
 export type BetResult = { tokensRemaining: number };
-export type AdminResult = { ok: true; detail?: string };
+/** kind = toast style in the host dock (default "ok"; "error" for e.g. a failed AI step reported in a 200 response). */
+export type AdminResult = { ok: true; detail?: string; kind?: "ok" | "info" | "error" };

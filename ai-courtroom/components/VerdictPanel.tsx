@@ -8,6 +8,9 @@ const DIMS: { key: keyof CriterionScores; label: string }[] = [
   { key: "rebuttal", label: "Rebuttal" }, { key: "persuasion", label: "Persuasion" },
 ];
 
+/** Sum of the four 0-10 dimensions, for DISPLAY only (the judge's winner rule is applied server-side). */
+export const scoreTotal = (s: CriterionScores) => s.evidence + s.logic + s.rebuttal + s.persuasion;
+
 export function WinnerReveal({ v, big = false }: { v: UiVerdict; big?: boolean }) {
   const s = SIDE[v.winner];
   return (
@@ -78,12 +81,14 @@ export function ScoreBars({ v, big = false }: { v: UiVerdict; big?: boolean }) {
   useEffect(() => { const t = setTimeout(() => setOn(true), 300); return () => clearTimeout(t); }, []);
   if (!v.scores) return null;
   const sc = v.scores;
+  // Totals are for DISPLAY only (never used for payouts). The server's `overall` average is shown only if present.
+  const label = (s: "A" | "B") => `${scoreTotal(sc[s])}/40${v.overall ? ` · avg ${v.overall[s]}` : ""}`;
   return (
     <div className={`card ${big ? "p-6" : "p-4"}`}>
       <div className={`mb-2 flex justify-between font-black ${big ? "text-2xl" : "text-sm"}`}>
-        <span className="flex items-center gap-1 text-agent-a"><AgentIcon side="A" className="w-4 h-4" color={SIDE.A.hex} /> A {v.overall ? v.overall.A : ""}</span>
+        <span className="flex items-center gap-1 text-agent-a"><AgentIcon side="A" className="w-4 h-4" color={SIDE.A.hex} /> A {label("A")}</span>
         <span className="text-ink/60">Score /10</span>
-        <span className="flex items-center gap-1 text-agent-b">{v.overall ? v.overall.B : ""} B <AgentIcon side="B" className="w-4 h-4" color={SIDE.B.hex} /></span>
+        <span className="flex items-center gap-1 text-agent-b">{label("B")} B <AgentIcon side="B" className="w-4 h-4" color={SIDE.B.hex} /></span>
       </div>
       <div className={`grid ${big ? "gap-4" : "gap-2"}`}>
         {DIMS.map((d, i) => (

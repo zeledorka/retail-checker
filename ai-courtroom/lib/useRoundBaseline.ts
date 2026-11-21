@@ -2,12 +2,17 @@
 import { useEffect, useState } from "react";
 import type { UiGameState } from "@/lib/types";
 
+type Stored = { before?: number; preSettle?: number };
+
 /**
- * FALLBACK ONLY, for when the server does not expose me.tokensBefore / me.roundDelta.
- * Remembers the server-reported balance the first time we see this round BEFORE the player has bet
- * (reveal / betting), keyed by round id in localStorage so it survives refreshes.
- * Then delta = (server balance now) - (server balance before the round). No payout maths on the client.
- * TODO: confirm with Dev 3 that /api/state returns me.tokensBefore + me.roundDelta, then this can go.
+ * FALLBACK ONLY, used while the server does not expose me.tokensBefore / me.roundDelta (if they appear, /play prefers them).
+ * Remembers server-reported balances for this round in sessionStorage (per round id, survives refresh in this tab):
+ *   - before:    the balance seen BEFORE the player bet (reveal / betting, no bet yet)
+ *   - preSettle: the balance seen AFTER the bet but before results (stake already deducted by the server)
+ * Returns the balance before the round: `before`, else `preSettle + stake` (both are server numbers; no payout maths).
+ * Then the UI shows delta = (server balance now) - (balance before the round).
+ * Storage is read/written only inside the effect, never during render.
+ * TODO: ask Dev 3 for me.tokensBefore + me.roundDelta in /api/state, then this can go.
  */
 export function useRoundBaseline(state: UiGameState | null): number | null {
   const roundId = state?.round?.id ?? null;
@@ -17,13 +22,17 @@ export function useRoundBaseline(state: UiGameState | null): number | null {
 
   useEffect(() => {
     if (!roundId || !me) { setBaseline(null); return; }
-    const key = `aic:baseline:${roundId}`;
-    let stored = localStorage.getItem(key);
-    if (stored === null && !me.bet && (phase === "reveal" || phase === "betting")) {
-      stored = String(me.tokens);
-      localStorage.setItem(key, stored);
+    const key = `aic:round-balance:${roundId}`;
+    let s: Stored = {};
+    try { s = JSON.parse(sessionStorage.getItem(key) ?? "{}") as Stored; } catch { s = {}; }
+    let changed = false;
+    if (s.before === undefined && !me.bet && (phase === "reveal" || phase === "betting")) { s.before = me.tokens; changed = true; }
+    if (s.preSettle === undefined && me.bet && (phase === "betting" || phase === "openings" || phase === "debate" || phase === "judging")) {
+      s.preSettle = me.tokens; changed = true;
     }
-    setBaseline(stored === null ? null : Number(stored));
+    if (changed) sessionStorage.setItem(key, JSON.stringify(s));
+    const before = s.before ?? (s.preSettle !== undefined && me.bet ? s.preSettle + me.bet.stake : null);
+    setBaseline(before);
   }, [roundId, me, phase]);
 
   return baseline;

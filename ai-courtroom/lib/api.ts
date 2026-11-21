@@ -12,10 +12,19 @@ import type {
   ResetResponse, RunAiResponse, StateResponse, TickResponse,
 } from "@/types/game";
 import { getPlayerId } from "@/lib/identity";
-import * as mock from "@/lib/mock/server";
 
-/** Mock is ON unless NEXT_PUBLIC_USE_MOCK is explicitly "0" (a fresh clone with no .env still runs). */
-export const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK !== "0";
+/**
+ * Mock mode ONLY when NEXT_PUBLIC_USE_MOCK is exactly "1" (set in .env / .env.example). Anything else, including unset,
+ * is the real backend, so a deploy that forgets the variable can never silently serve the mock game.
+ * The value is inlined at build time, so in a real build every `if (USE_MOCK)` branch below is dead code.
+ */
+export const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === "1";
+
+/**
+ * Mock code is only ever loaded through this dynamic import, and only inside `if (USE_MOCK)` branches, so the real
+ * path never requests (and the bundler normally doesn't even emit) the mock chunk. Never import lib/mock statically.
+ */
+const mockServer = () => import("@/lib/mock/server");
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Backend contract: Dev 3's types/game.ts is the source of truth (imported, never copied).
@@ -274,32 +283,33 @@ export async function getState(asPlayer: boolean): Promise<UiGameState> {
   if (USE_MOCK) {
     const pid = asPlayer ? getPlayerId() : null;
     // "Use raw-shape fixtures" (mock phase switcher): the mock game in the real /api/state shape, through the real adapter.
-    if (mock.mockIsRaw()) return adaptState(await mock.mockGetRawState(pid), true);
-    return mock.mockGetState(pid);
+    const m = await mockServer();
+    if (m.mockIsRaw()) return adaptState(await m.mockGetRawState(pid), true);
+    return m.mockGetState(pid);
   }
   return adaptState(await http<StateResponse>("/api/state", { auth: asPlayer ? "optional" : "none" }));
 }
 
 export async function join(nickname: string): Promise<JoinResult> {
-  if (USE_MOCK) return mock.mockJoin(getPlayerId(true)!, nickname);
+  if (USE_MOCK) return (await mockServer()).mockJoin(getPlayerId(true)!, nickname);
   const r = await http<JoinResponse>("/api/join", { method: "POST", auth: "required", body: JSON.stringify({ nickname }) });
   return { nickname: r.player.nickname, tokens: r.player.tokens };
 }
 
 export async function placeBet(roundId: string, side: Side, stake: number): Promise<BetResult> {
-  if (USE_MOCK) return mock.mockBet(getPlayerId()!, side, stake);
+  if (USE_MOCK) return (await mockServer()).mockBet(getPlayerId()!, side, stake);
   const r = await http<BetResponse>("/api/bet", { method: "POST", auth: "required", body: JSON.stringify({ roundId, side, stake }) });
   return { tokensRemaining: r.tokensRemaining };
 }
 
 /** One suggestion per round (max 200 chars). The side is decided by the server from the player's bet. */
 export async function sendSuggestion(roundId: string, text: string): Promise<void> {
-  if (USE_MOCK) { await mock.mockInject(getPlayerId()!, text); return; }
+  if (USE_MOCK) { await (await mockServer()).mockInject(getPlayerId()!, text); return; }
   await http("/api/inject", { method: "POST", auth: "required", body: JSON.stringify({ roundId, text }) });
 }
 
 export async function getLeaderboard(): Promise<UiLeaderboardEntry[]> {
-  if (USE_MOCK) return (await mock.mockGetState(null)).leaderboard;
+  if (USE_MOCK) return (await (await mockServer()).mockGetState(null)).leaderboard;
   return (await http<LeaderboardResponse>("/api/leaderboard")).players;
 }
 
@@ -317,17 +327,17 @@ function aiToast(ai: RunAiResponse): AdminResult {
 
 export const admin = {
   async start(secret: string): Promise<AdminResult> {
-    if (USE_MOCK) return mock.mockAdminStart();
+    if (USE_MOCK) return (await mockServer()).mockAdminStart();
     const r = await http<AdvanceResponse>("/api/admin/start", { method: "POST", admin: secret });
     return { ok: true, detail: r.changed ? `Round started (${r.phase})` : "Already started" };
   },
   async advance(secret: string, rawPhase: string): Promise<AdminResult> {
-    if (USE_MOCK) return mock.mockAdminAdvance();
+    if (USE_MOCK) return (await mockServer()).mockAdminAdvance();
     const r = await http<AdvanceResponse>("/api/admin/advance", { method: "POST", admin: secret, body: JSON.stringify({ expectedPhase: rawPhase }) });
     return { ok: true, kind: r.changed ? "ok" : "info", detail: r.changed ? `Now ${r.phase ?? "game over"}` : "No change (already advanced)" };
   },
   async runAi(secret: string, roundId: string, rawPhase: string): Promise<AdminResult> {
-    if (USE_MOCK) return mock.mockAdminRunAi();
+    if (USE_MOCK) return (await mockServer()).mockAdminRunAi();
     try {
       return aiToast(await http<RunAiResponse>("/api/admin/run-ai", { method: "POST", admin: secret, body: JSON.stringify({ roundId, expectedPhase: rawPhase }) }));
     } catch (e) {
@@ -337,7 +347,7 @@ export const admin = {
     }
   },
   async cancel(secret: string, roundId: string): Promise<AdminResult> {
-    if (USE_MOCK) return mock.mockAdminCancel();
+    if (USE_MOCK) return (await mockServer()).mockAdminCancel();
     const r = await http<CancelResponse>("/api/admin/cancel", { method: "POST", admin: secret, body: JSON.stringify({ roundId }) });
     return { ok: true, detail: `Cancelled, ${r.refunded} refunded` };
   },
@@ -346,14 +356,14 @@ export const admin = {
    * phase's time is up (or its AI work is done), or nothing. Safe to overlap. Does nothing in the lobby.
    */
   async tick(secret: string): Promise<AdminResult> {
-    if (USE_MOCK) return mock.mockAdminTick();
+    if (USE_MOCK) return (await mockServer()).mockAdminTick();
     const r = await http<TickResponse>("/api/admin/tick", { method: "POST", admin: secret });
     if (r.ai) return aiToast(r.ai);
     return { ok: true, kind: r.changed ? "ok" : "info", detail: r.changed ? `Now ${r.phase ?? "game over"}` : "Tick: nothing to do yet" };
   },
   /** Rehearsal reset: fresh game, every player back to 100 tokens, all cases unused. */
   async reset(secret: string): Promise<AdminResult> {
-    if (USE_MOCK) return mock.mockAdminReset();
+    if (USE_MOCK) return (await mockServer()).mockAdminReset();
     await http<ResetResponse>("/api/admin/reset", { method: "POST", admin: secret });
     return { ok: true, detail: "Game reset: back to the lobby, everyone at 100 tokens" };
   },

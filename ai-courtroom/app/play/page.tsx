@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { join, placeBet, sendSuggestion, USE_MOCK, friendly } from "@/lib/api";
 import { useGameState } from "@/lib/useGameState";
 import { usePlayer } from "@/lib/usePlayer";
@@ -17,7 +17,8 @@ import { SuggestionBox } from "@/components/SuggestionBox";
 
 import { Podium, rankOf } from "@/components/Leaderboard";
 import { AgentIcon, AgentTag, SIDE } from "@/components/sides";
-import { MockSwitcher } from "@/components/MockSwitcher";
+// Mock-only UI is lazy-loaded and only rendered when USE_MOCK, so the real build never loads it.
+const MockSwitcher = lazy(() => import("@/components/MockSwitcher").then((m) => ({ default: m.MockSwitcher })));
 import { ReconnectingPill } from "@/components/ReconnectingPill";
 
 export default function PlayPage() {
@@ -269,7 +270,7 @@ function MockFab({ onChange }: { onChange: () => void }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="fixed bottom-3 right-3 z-50 flex flex-col items-end gap-2">
-      {open && <div className="card w-72 p-3"><MockSwitcher onChange={onChange} compact /></div>}
+      {open && <div className="card w-72 p-3"><Suspense fallback={null}><MockSwitcher onChange={onChange} compact /></Suspense></div>}
       <button type="button" onClick={() => setOpen(!open)} aria-label="Mock controls" className="h-10 w-10 rounded-full bg-black/40 text-lg opacity-60 hover:opacity-100">🧪</button>
     </div>
   );

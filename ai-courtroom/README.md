@@ -49,7 +49,7 @@ consume the UI types in `lib/types.ts`.
   round, Advance phase, Run AI step, Cancel + refund, Tick (one autopilot step), Autopilot (ticks every second: runs the
   AI turns and advances phases when their time is up), Reset game, Skip to leaderboard. `H` hides it (autopilot keeps
   running), it fades when idle, and `/projector?view=display` never shows it. The secret is kept in sessionStorage only.
-- **Mock mode** (`NEXT_PUBLIC_USE_MOCK=1`, the default): no backend needed. `/play` and `/projector` in the same browser
+- **Mock mode** (`NEXT_PUBLIC_USE_MOCK=1`, set in `.env.example`; only the exact value `1` enables it): no backend needed. `/play` and `/projector` in the same browser
   share one simulated game; jump between phases with the mock phase switcher in the host dock or the 🧪 button on `/play`.
   Set `NEXT_PUBLIC_USE_MOCK=0` in `ai-courtroom/.env` (copied from `.env.example`, plus the Supabase and admin variables)
   to use the real API; restart `npm run dev` afterwards (`NEXT_PUBLIC_*` values are read at build/start time).

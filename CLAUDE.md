@@ -29,7 +29,7 @@ suggestion to the agent they backed, and an independent AI judge scores the deba
 ```bash
 cd ai-courtroom
 npm install
-cp .env.example .env         # NEXT_PUBLIC_USE_MOCK=1 (mock is also the default when unset)
+cp .env.example .env         # NEXT_PUBLIC_USE_MOCK=1 = mock mode (ONLY "1" enables it; unset = real backend)
 npm run dev                  # http://localhost:3000/play  and  /projector
 npm run build                # must pass with no type errors
 ```

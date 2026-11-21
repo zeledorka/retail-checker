@@ -1,10 +1,11 @@
 "use client";
 // Host controls as a fixed overlay. NEVER affects courtroom layout (position: fixed, own stacking context).
 // Rendered only after admin unlock; the secret lives in sessionStorage (never the URL).
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { admin, friendly, USE_MOCK } from "@/lib/api";
 import type { AdminResult, UiGameState } from "@/lib/types";
-import { MockSwitcher } from "./MockSwitcher";
+// Mock-only: lazy-loaded and rendered only when USE_MOCK, so the real build never loads it.
+const MockSwitcher = lazy(() => import("./MockSwitcher").then((m) => ({ default: m.MockSwitcher })));
 import { PHASE_LABEL } from "./sides";
 
 type Toast = { id: number; text: string; kind: "ok" | "info" | "err" };
@@ -132,7 +133,7 @@ export function HostDock({ state, secret, onLock, refetch, idle, onSkipVerdict, 
               Skip to leaderboard ⏭
             </button>
           )}
-          {USE_MOCK && <div className="mt-3 border-t pt-2"><MockSwitcher onChange={refetch} /></div>}
+          {USE_MOCK && <div className="mt-3 border-t pt-2"><Suspense fallback={null}><MockSwitcher onChange={refetch} /></Suspense></div>}
           <p className="mt-2 text-[10px] font-bold text-ink/50">H: hide dock (autopilot keeps running) · auto-hides when idle</p>
         </div>
       )}

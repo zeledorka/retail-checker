@@ -20,8 +20,8 @@ const IDLE_MS = 3000;
 const VERDICT_SCREEN_SECONDS = 15; // not exported: Next.js page files may only export the page + route config
 
 type ResultsStage = {
-  /** null outside a results phase that has a verdict. */
-  screen: "verdict" | "leaderboard" | null;
+  /** null outside a results phase that has a verdict. "pending" = not mounted yet (clock/storage unread): neutral screen. */
+  screen: "pending" | "verdict" | "leaderboard" | null;
   verdictStart: number | null;
   verdictEndsAt: number | null;
   skip: () => void;
@@ -40,29 +40,37 @@ function useResultsStage(state: UiGameState | null, offset: number): ResultsStag
   const serverStart = inResults ? r?.phaseStartedAt ?? null : null;
   const [fallbackStart, setFallbackStart] = useState<number | null>(null);
   const [skipped, setSkipped] = useState(false);
+  /** Round id whose sessionStorage (skip flag / fallback start) has been read. Only ever set inside the effect. */
+  const [readFor, setReadFor] = useState<string | null>(null);
 
+  // Clock + storage are read only here (after mount), never during render.
   useEffect(() => {
-    if (!inResults || !roundId) { setFallbackStart(null); setSkipped(false); return; }
+    if (!inResults || !roundId) { setFallbackStart(null); setSkipped(false); setReadFor(null); return; }
     setSkipped(sessionStorage.getItem(`aic:verdict-skip:${roundId}`) === "1");
-    if (serverStart !== null) return;
-    // TODO: ask Dev 3 for results phase start timestamp (falls back to when this tab first saw the results phase).
-    const key = `aic:results-seen:${roundId}`;
-    let seen = sessionStorage.getItem(key);
-    if (!seen) { seen = String(Date.now() + offset); sessionStorage.setItem(key, seen); }
-    setFallbackStart(Number(seen));
+    if (serverStart === null) {
+      // TODO: ask Dev 3 for results phase start timestamp (falls back to when this tab first saw the results phase).
+      const key = `aic:results-seen:${roundId}`;
+      let seen = sessionStorage.getItem(key);
+      if (!seen) { seen = String(Date.now() + offset); sessionStorage.setItem(key, seen); }
+      setFallbackStart(Number(seen));
+    }
+    setReadFor(roundId);
     // offset is intentionally not a dependency: the first-seen time must not move as the offset is refined.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inResults, roundId, serverStart]);
 
   const verdictStart = serverStart ?? fallbackStart;
   const verdictEndsAt = verdictStart !== null ? verdictStart + VERDICT_SCREEN_SECONDS * 1000 : null;
-  const { expired } = useCountdown(verdictEndsAt, offset);
+  const { expired, isReady } = useCountdown(verdictEndsAt, offset);
   const skip = useCallback(() => {
     if (roundId) sessionStorage.setItem(`aic:verdict-skip:${roundId}`, "1");
     setSkipped(true);
   }, [roundId]);
 
-  const screen = !inResults ? null : skipped || expired ? "leaderboard" : "verdict";
+  // Until storage is read for THIS round and the countdown has a real clock, we can't tell verdict from leaderboard
+  // (>15s elapsed / skipped): show a neutral screen instead of flashing the wrong one.
+  const ready = readFor === roundId && verdictEndsAt !== null && isReady;
+  const screen = !inResults ? null : !ready ? "pending" : skipped || expired ? "leaderboard" : "verdict";
   return { screen, verdictStart, verdictEndsAt, skip };
 }
 
@@ -219,7 +227,8 @@ function Stage({ state, joinUrl, results }: { state: UiGameState; joinUrl: strin
     case "results": {
       const v = state.verdict;
       // Verdict not in the state yet: keep the judging screen rather than an empty verdict.
-      if (!v || !results.screen) return <Judging state={state} />;
+      // Also while the sub-stage is still "pending" (before mount), so neither results screen flashes.
+      if (!v || !results.screen || results.screen === "pending") return <Judging state={state} />;
       return results.screen === "verdict" ? <VerdictScreen v={v} /> : <WinnerScreen v={v} state={state} />;
     }
     case "cancelled":

@@ -1,58 +1,62 @@
 // Server-only: this file calls the AI (API keys) and uses the secret DB key.
+//
+// The round, with Dev 1's sequential engine (ai/INTEGRATION.md):
+//   REVEAL -> BETTING -> OPENINGS (A, then B) -> DEBATE (8 turns: A,B,A,B,...) -> JUDGING -> RESULTS
+//
+// Golden rule for every AI call: ONE model call per server invocation, and it is committed to the DB before anything
+// is shown. Each call: claim the round's lease -> load AiRoundState -> call ONE engine function -> save the new state
+// with compare-and-swap on `revision` (plus the public line/verdict, in the same transaction) -> release.
 import 'server-only';
-import { z } from 'zod';
+import { randomUUID } from 'node:crypto';
 import { db } from '@/lib/supabase/admin';
-import { ai } from '@/lib/ai';
+import {
+  getAi, parseRoundState, serializeRound, startRound,
+  type AiError, type AiRoundState, type AudienceSubmission, type PublicArgument, type Scenario,
+} from '@/lib/ai';
 import { getActiveGame } from '@/lib/game/state';
 import { GameError } from '@/lib/game/errors';
-import type {
-  AdvanceResponse, AgentLine, AudienceClue, Case, Phase, Side, Stage,
-} from '@/types/game';
+import { MAX_TURNS } from '@/lib/game/constants';
+import type { AdvanceResponse, Phase, RunAiResponse, Side } from '@/types/game';
 
 /* ==========================================================================================
  * 1. CONFIGURATION: the shape of a round. Change timings here, nowhere else.
  * ======================================================================================== */
 
-// Every phase as a RUNTIME list (types vanish at runtime; Zod in the routes needs real values).
-// `as const` keeps each item as its exact literal ('REVEAL', not just string).
+// Every phase as a RUNTIME list (Zod in the routes needs real values). `as const` keeps the literals.
 export const ALL_PHASES = [
-  'REVEAL', 'BETTING', 'OPENINGS', 'INJECT_1', 'REBUTTALS',
-  'INJECT_2', 'FINALS', 'JUDGING', 'RESULTS', 'CANCELLED',
+  'REVEAL', 'BETTING', 'OPENINGS', 'DEBATE', 'JUDGING', 'RESULTS', 'CANCELLED',
 ] as const;
 
-// Which phase follows which. `Partial<Record<Phase, Phase>>` means:
-// "an object whose keys are Phases and values are Phases, but not every key is required".
-// RESULTS and CANCELLED have no entry because after them we start a NEW round instead.
+// Which phase follows which. RESULTS/CANCELLED have no entry: after them we start a NEW round.
 export const NEXT: Partial<Record<Phase, Phase>> = {
   REVEAL: 'BETTING',
   BETTING: 'OPENINGS',
-  OPENINGS: 'INJECT_1',
-  INJECT_1: 'REBUTTALS',
-  REBUTTALS: 'INJECT_2',
-  INJECT_2: 'FINALS',
-  FINALS: 'JUDGING',
+  OPENINGS: 'DEBATE',
+  DEBATE: 'JUDGING',
   JUDGING: 'RESULTS',
 };
 
-// Target length of each phase in seconds (from the spec's timing table).
-// `Record<Phase, number>` (no Partial) = TS errors if you forget a phase. Handy safety net.
+// Phase length in seconds. For AI phases this is a BUDGET, not a promise:
+//  - OPENINGS: minimum time on screen (also the first window for audience clues). Never left before both openings exist.
+//  - DEBATE:   the AI budget for the 8 turns (~30s measured live). When it runs out we stop asking for turns and judge
+//              whatever exists (the judge supports partial debates).
+//  - JUDGING:  the judge call (~6s measured; the judge's own timeout is 40s).
 export const SECONDS: Record<Phase, number> = {
-  REVEAL: 8, BETTING: 15, OPENINGS: 8, INJECT_1: 12, REBUTTALS: 17,
-  INJECT_2: 12, FINALS: 20, JUDGING: 20, RESULTS: 8, CANCELLED: 8,
+  REVEAL: 8, BETTING: 15, OPENINGS: 12, DEBATE: 60, JUDGING: 45, RESULTS: 10, CANCELLED: 8,
 };
 
-// Phases where the server must call the AI when the phase BEGINS.
-export const AI_PHASES: readonly Phase[] = ['OPENINGS', 'REBUTTALS', 'FINALS', 'JUDGING'];
+export { MAX_TURNS };
+export const AI_PHASES: readonly Phase[] = ['OPENINGS', 'DEBATE', 'JUDGING'];
 const isAiPhase = (p: Phase) => AI_PHASES.includes(p);
 
-// AI call limits. Two attempts × 25s = 50s, which fits inside Vercel's maxDuration = 60.
-const AI_TIMEOUT_MS = 25_000;  // underscores in numbers are just for readability
-const AI_ATTEMPTS = 2;
-// If a step says "running" for longer than this, assume the server died mid-call and allow retry.
-const STALE_RUNNING_MS = 90_000;
+const AGENT_TIMEOUT_MS = 25_000;   // one opening / one turn
+const JUDGE_TIMEOUT_MS = 40_000;
+const MIN_TURN_MS = 4_000;         // don't START a debate turn with less than this left in the DEBATE budget
+const LEASE_SECONDS = 50;          // > the longest single call; a crashed request's lease expires after this
+const MAX_AI_FAILURES = 3;         // autopilot retries a failing step this many times, then cancels (refund) / pauses
 
 /* ==========================================================================================
- * 2. DATABASE ROW TYPE + small loaders
+ * 2. DATABASE ROWS + small loaders
  * ======================================================================================== */
 
 type RoundRow = {
@@ -61,7 +65,8 @@ type RoundRow = {
   phase: Phase;
   phase_ends_at: string;
   ai_step_status: 'idle' | 'running' | 'done' | 'failed';
-  ai_step_started_at: string | null;
+  ai_failures: number;
+  ai_error_retryable: boolean;
 };
 
 async function getRound(roundId: string): Promise<RoundRow> {
@@ -70,96 +75,34 @@ async function getRound(roundId: string): Promise<RoundRow> {
   return data as RoundRow;
 }
 
-/** Load the case for a round and convert DB column names to the shared Case type. */
-async function loadCase(caseId: string): Promise<Case> {
+/** The case as the AI's Scenario (the exact startRound input). */
+async function loadScenario(caseId: string): Promise<Scenario> {
   const { data: c, error } = await db.from('cases').select('*').eq('id', caseId).single();
   if (error || !c) throw new Error(`Case ${caseId} missing`);
   return {
-    id: c.id, scenario: c.scenario, imageUrl: c.image_url,
-    hypothesisA: c.hypothesis_a, hypothesisB: c.hypothesis_b, evidence: c.evidence_json,
+    title: c.title, description: c.description, evidence: c.evidence_json,
+    interpretationA: c.interpretation_a, interpretationB: c.interpretation_b,
   };
 }
 
-/** Everything both agents have said so far, in order. This is the PUBLIC transcript. */
-async function loadTranscript(roundId: string): Promise<AgentLine[]> {
+/**
+ * ALL audience clues of the round, in the AI's AudienceSubmission shape. The cumulative list is passed on every turn
+ * (ids already in the AI state are ignored). playerId comes from the authenticated session when the clue was stored.
+ */
+async function loadSubmissions(roundId: string): Promise<AudienceSubmission[]> {
   const { data, error } = await db
-    .from('debate_messages')
-    .select('speaker, stage, line_text')
+    .from('injections')
+    .select('id, player_id, side, text, created_at')
     .eq('round_id', roundId)
-    .order('ordinal');                          // ascending by default
+    .order('created_at');
   if (error) throw error;
-  return (data ?? []).map((m) => ({ side: m.speaker as Side, stage: m.stage as Stage, text: m.line_text }));
-}
-
-/**
- * Lock the clue window and pick up to 3 clues per side (random, done in SQL).
- * Calling it twice returns the SAME selection (the SQL function is idempotent).
- * The return type uses AudienceClue, so Dev 1 receives exactly the contract shape.
- */
-async function selectClues(roundId: string, window: 1 | 2) {
-  const { data, error } = await db.rpc('select_clues', { p_round: roundId, p_window: window });
-  if (error) throw error;
-
-  // `[] as AudienceClue[]` tells TS "this empty array will hold AudienceClues".
-  const clues = { A: [] as AudienceClue[], B: [] as AudienceClue[] };
-  for (const row of data ?? []) {
-    clues[row.side as Side].push({ id: row.id, side: row.side, text: row.text, window });
-  }
-  return clues; // NOTE: Agent A only ever gets clues.A, Agent B only clues.B. Dev 1 must keep that.
+  return (data ?? []).map((i) => ({
+    id: i.id, playerId: i.player_id, side: i.side as Side, text: i.text, submittedAt: i.created_at,
+  }));
 }
 
 /* ==========================================================================================
- * 3. SAFE AI CALLS: timeout + retry + validate
- *    AI output is UNTRUSTED. It can be slow, crash, or return garbage. We never save
- *    anything that doesn't pass these Zod schemas.
- * ======================================================================================== */
-
-const LineSchema = z.object({ text: z.string().trim().min(1).max(800) });
-const PairSchema = z.object({ A: LineSchema, B: LineSchema });
-const VerdictSchema = z.object({
-  winner: z.enum(['A', 'B']),                  // exactly A or B. No draws, no "C".
-  rationale: z.string().trim().min(1).max(1500),
-  scores: z.object({ A: z.number(), B: z.number() }),
-});
-
-/**
- * Reject if `promise` takes longer than `ms`.
- *
- * `<T>` is a GENERIC: a placeholder type. If you pass a Promise<Verdict>, T becomes
- * Verdict and you get back a Promise<Verdict>. One function works for every result type.
- */
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
-    promise.then(
-      (value) => { clearTimeout(timer); resolve(value); },
-      (err) => { clearTimeout(timer); reject(err); },
-    );
-  });
-}
-
-/**
- * Call the AI, enforce a timeout, VALIDATE the output, retry once on any failure.
- *  - fn:     a function that starts the AI call (a function, not a promise, so we can call it again)
- *  - schema: the Zod schema the result must match
- * `z.ZodType<T>` = "a Zod schema that produces a T"; TS infers T from the schema you pass.
- */
-async function callAi<T>(label: string, fn: () => Promise<unknown>, schema: z.ZodType<T>): Promise<T> {
-  let lastError: unknown;
-  for (let attempt = 1; attempt <= AI_ATTEMPTS; attempt++) {
-    try {
-      const raw = await withTimeout(fn(), AI_TIMEOUT_MS, label);
-      return schema.parse(raw);                 // .parse THROWS if invalid → goes to catch → retry
-    } catch (e) {
-      lastError = e;
-      console.warn(`[ai] ${label} attempt ${attempt} failed:`, e);
-    }
-  }
-  throw lastError;                              // all attempts failed
-}
-
-/* ==========================================================================================
- * 4. GAME ACTIONS (called by the admin routes)
+ * 3. GAME ACTIONS (called by the admin routes)
  * ======================================================================================== */
 
 /** Start round 1. Safe to double-click: the second call sees the game is no longer in LOBBY. */
@@ -170,9 +113,8 @@ export async function startGame(): Promise<AdvanceResponse> {
 }
 
 /**
- * Create the next round, or end the game after max_rounds.
- * `expectedRoundNumber` makes it idempotent: the SQL only acts if the game is still on
- * that round number, so two simultaneous calls can't create two rounds.
+ * Create the next round (or end the game after max_rounds), then create its AI state.
+ * `expectedRoundNumber` makes it idempotent: two simultaneous calls can't create two rounds.
  */
 async function startNextRound(gameId: string, expectedRoundNumber: number): Promise<AdvanceResponse> {
   const { data, error } = await db.rpc('start_next_round', {
@@ -182,7 +124,10 @@ async function startNextRound(gameId: string, expectedRoundNumber: number): Prom
   });
   if (error) throw error;                       // e.g. NO_CASES_LEFT → toErrorResponse maps it
   const newRound = data?.[0];                   // SQL returns 0 or 1 rows
-  if (newRound) return { changed: true, phase: newRound.phase, phaseEndsAt: newRound.phase_ends_at };
+  if (newRound) {
+    await createAiState(newRound.id, newRound.case_id);
+    return { changed: true, phase: newRound.phase, phaseEndsAt: newRound.phase_ends_at };
+  }
 
   // No new round: either someone else already started it, or the game just ended.
   const after = await getActiveGame();
@@ -190,9 +135,27 @@ async function startNextRound(gameId: string, expectedRoundNumber: number): Prom
 }
 
 /**
+ * startRound() validates the scenario and returns revision 0 of the AI state. Stored once per round
+ * (insert ... on conflict do nothing: never recreate an existing round's state). An invalid case cancels the round.
+ */
+async function createAiState(roundId: string, caseId: string) {
+  const scenario = await loadScenario(caseId);
+  const started = startRound({ roundId, scenario, maxTurns: MAX_TURNS });
+  if (!started.ok) {
+    await db.rpc('cancel_round', { p_round: roundId });
+    throw new GameError('BAD_REQUEST', 500, `Case ${caseId} rejected by the AI engine: ${started.error.message}`);
+  }
+  const { error } = await db.from('ai_round_states').upsert(
+    { round_id: roundId, state: JSON.parse(serializeRound(started.state)), revision: started.state.revision },
+    { onConflict: 'round_id', ignoreDuplicates: true },
+  );
+  if (error) throw error;
+}
+
+/**
  * Move the current round from `expected` to the next phase.
- * The caller says which phase it THINKS we're in. If that's stale, nothing happens.
- * This is how "host clicks advance twice → phase changes once" is guaranteed.
+ * The caller says which phase it THINKS we're in. If that's stale, nothing happens
+ * ("host clicks advance twice → phase changes once").
  */
 export async function advance(expected: Phase): Promise<AdvanceResponse> {
   const game = await getActiveGame();
@@ -200,8 +163,6 @@ export async function advance(expected: Phase): Promise<AdvanceResponse> {
   if (!game.current_round_id) throw new GameError('BAD_REQUEST', 409, 'Game not started — call /api/admin/start');
 
   const round = await getRound(game.current_round_id);
-
-  // Stale request (double-click, two admin tabs, autopilot overlap) → harmless no-op.
   if (round.phase !== expected) return { changed: false, phase: round.phase };
 
   // End of a round → start the next one (or finish the game).
@@ -209,34 +170,29 @@ export async function advance(expected: Phase): Promise<AdvanceResponse> {
     return startNextRound(game.id, game.round_number);
   }
 
-  // Never leave an AI phase until its output is saved. (Host can retry via /run-ai, or /cancel.)
-  if (isAiPhase(expected) && round.ai_step_status !== 'done') {
+  // OPENINGS can't end without both openings; JUDGING can't end without a stored verdict.
+  // DEBATE may end early (host or clock): the judge rules on the turns that exist.
+  if ((expected === 'OPENINGS' || expected === 'JUDGING') && round.ai_step_status !== 'done') {
     throw new GameError('AI_NOT_DONE', 409, `AI step is "${round.ai_step_status}"`);
   }
 
-  // `!` after NEXT[expected] = "I promise this isn't undefined". True here because
-  // RESULTS/CANCELLED (the only phases without a NEXT entry) were handled above.
   const next = NEXT[expected]!;
 
-  // Pay winners BEFORE the phase flips to RESULTS, so the moment players see RESULTS,
-  // balances are already correct. settle_round is idempotent (a second call pays nothing).
+  // Pay winners BEFORE the phase flips to RESULTS, so balances are correct the moment players see it.
+  // settle_round is idempotent (settled_at) and reads the verdict stored once by commit_ai_step.
   if (next === 'RESULTS') {
     const { error } = await db.rpc('settle_round', { p_round: round.id });
     if (error) throw error;
   }
 
-  // The atomic compare-and-set in SQL: only updates if phase is STILL `expected`.
   const { data: rows, error } = await db.rpc('transition_phase', {
     p_round: round.id, p_expected: expected, p_next: next, p_seconds: SECONDS[next],
   });
   if (error) throw error;
   if (!rows?.length) return { changed: false, phase: expected }; // lost a race; someone else advanced
 
-  // Entering an AI phase → run the AI now. We AWAIT it because on Vercel, work started
-  // after the response is sent may be frozen. The phase change is already committed, so
-  // players see "Agents thinking…" (aiStepStatus = 'running') while this runs.
-  // If the AI fails, we don't fail the advance: runAiStep records 'failed' on the round
-  // and the host decides: Retry (/run-ai) or Cancel (/cancel).
+  // Entering an AI phase → make the FIRST call now (awaited: on Vercel, work after the response may be frozen).
+  // The rest is driven by tick() / run-ai, one call per invocation. A failure is recorded on the round, not thrown.
   if (isAiPhase(next)) {
     await runAiStep(round.id, next).catch((e) => console.error('[advance] AI step failed', e));
   }
@@ -245,117 +201,200 @@ export async function advance(expected: Phase): Promise<AdvanceResponse> {
 }
 
 /**
- * Autopilot: advance only if the current phase's deadline has passed and its AI work is done.
- * The admin page calls this every ~1s. Because advance() is idempotent, overlapping calls are fine.
+ * Autopilot: the admin page (or scripts/dev/autopilot.ts) calls this every ~1s. Each call does at most ONE thing:
+ * one AI call, one phase change, or nothing. Overlapping calls are safe (lease + compare-and-set everywhere).
  */
-export async function tick(): Promise<AdvanceResponse> {
+export async function tick(): Promise<AdvanceResponse & { ai?: RunAiResponse }> {
   const game = await getActiveGame();
   if (game.status !== 'IN_PROGRESS' || !game.current_round_id) return { changed: false, phase: null };
 
   const round = await getRound(game.current_round_id);
   const deadlinePassed = Date.now() >= Date.parse(round.phase_ends_at);
-  if (!deadlinePassed) return { changed: false, phase: round.phase };
 
-  // AI still working (or failed) → wait. On 'failed' the autopilot pauses for the host.
-  if (isAiPhase(round.phase) && round.ai_step_status !== 'done') return { changed: false, phase: round.phase };
+  if (!isAiPhase(round.phase)) {
+    return deadlinePassed ? advance(round.phase) : { changed: false, phase: round.phase };
+  }
 
-  return advance(round.phase);
+  // DEBATE: out of time → stop requesting turns and move to the judge (partial debate). All turns done → move on now.
+  if (round.phase === 'DEBATE' && (deadlinePassed || round.ai_step_status === 'done')) return advance('DEBATE');
+  // OPENINGS waits for its minimum on-screen time; JUDGING moves on as soon as the verdict is stored.
+  if (round.ai_step_status === 'done') {
+    return round.phase === 'JUDGING' || deadlinePassed ? advance(round.phase) : { changed: false, phase: round.phase };
+  }
+
+  // AI work remains. After repeated (or non-retryable) failures: openings/judge can't be skipped → cancel + refund.
+  // (A failing DEBATE turn needs no special case: the DEBATE budget runs out and we judge what exists.)
+  const givenUp = round.ai_step_status === 'failed' && (!round.ai_error_retryable || round.ai_failures >= MAX_AI_FAILURES);
+  if (givenUp) {
+    if (round.phase === 'DEBATE') return { changed: false, phase: round.phase };
+    const refunded = await cancelRound(round.id);
+    console.warn(`[tick] ${round.phase} failed ${round.ai_failures}x → round cancelled, ${refunded} refunded`);
+    return { changed: true, phase: 'CANCELLED' };
+  }
+
+  const ai = await runAiStep(round.id, round.phase).catch((e): RunAiResponse => ({ status: 'failed', error: String(e) }));
+  return { changed: false, phase: round.phase, ai };
 }
 
 /**
- * Run the AI work for an AI phase and save the result. Safe to call repeatedly:
- *  - "claims" the step first, so two simultaneous calls can't both run the AI
- *  - DB unique constraints stop duplicate messages/verdicts even if something slips through
+ * Make the NEXT AI call for this phase (exactly one model request, or none if nothing is left) and commit it.
+ * Safe to call repeatedly and concurrently:
+ *   - only the request holding the round's lease calls the model; the others return 'skipped'
+ *   - the commit is a compare-and-swap on the state revision; a stale result is discarded
+ *   - the engine itself answers repeats of finished steps from the state (reused: true, no model call)
  */
-export async function runAiStep(roundId: string, phase: Phase): Promise<{ status: 'done' | 'skipped' }> {
+export async function runAiStep(roundId: string, phase: Phase): Promise<RunAiResponse> {
   if (!isAiPhase(phase)) throw new GameError('BAD_REQUEST', 400, `${phase} has no AI step`);
 
   const round = await getRound(roundId);
-  if (round.phase !== phase) return { status: 'skipped' };  // round has moved on
+  if (round.phase !== phase) return { status: 'skipped' };       // round has moved on
+  if (round.ai_step_status === 'done') return { status: 'done' };
 
-  // ---------- Can we claim this step? ----------
-  const startedAt = round.ai_step_started_at ? Date.parse(round.ai_step_started_at) : 0;
-  const isStale = round.ai_step_status === 'running' && Date.now() - startedAt > STALE_RUNNING_MS;
-  const claimable = round.ai_step_status === 'idle' || round.ai_step_status === 'failed' || isStale;
-  if (!claimable) return { status: 'skipped' };             // already done, or running right now
+  // DEBATE budget check BEFORE taking the lease: don't start a turn that can't finish in time.
+  const msLeft = Date.parse(round.phase_ends_at) - Date.now();
+  if (phase === 'DEBATE' && msLeft < MIN_TURN_MS) return { status: 'skipped' };
 
-  // ---------- Claim it (compare-and-set) ----------
-  // Only succeeds if the row STILL has the status/timestamp we just read. If another request
-  // claimed it in between, zero rows match and we back off.
-  let claim = db
-    .from('rounds')
-    .update({ ai_step_status: 'running', ai_step_started_at: new Date().toISOString(), ai_error: null })
-    .eq('id', roundId)
-    .eq('phase', phase)
-    .eq('ai_step_status', round.ai_step_status);
-  // SQL can't compare NULL with "=", so Supabase needs .is(..., null) for that case.
-  claim = round.ai_step_started_at === null
-    ? claim.is('ai_step_started_at', null)
-    : claim.eq('ai_step_started_at', round.ai_step_started_at);
-  const { data: claimed, error: claimError } = await claim.select('id');
-  if (claimError) throw claimError;
-  if (!claimed?.length) return { status: 'skipped' };
+  // ---------- Claim the lease (only one request per round may call the model) ----------
+  const owner = randomUUID();
+  const { data: leased, error: leaseError } = await db.rpc('claim_ai_lease', {
+    p_round: roundId, p_owner: owner, p_seconds: LEASE_SECONDS,
+  });
+  if (leaseError) throw leaseError;
+  const row = (leased as { state: unknown; revision: number }[] | null)?.[0];
+  if (!row) return { status: 'skipped' };                         // someone else is mid-call (or no state row)
 
-  await db.rpc('bump_version');                 // clients now see aiStepStatus = 'running'
+  const release = () => db.rpc('release_ai_lease', { p_round: roundId, p_owner: owner });
 
-  // ---------- Do the work ----------
   try {
-    const caseData = await loadCase(round.case_id);
-    const transcript = await loadTranscript(roundId);
+    const loaded = parseRoundState(row.state);
+    if (!loaded.ok) {
+      // Corrupt / missing state is never silently recreated (INTEGRATION.md §5).
+      await recordFailure(roundId, phase, loaded.error);
+      return { status: 'failed', error: loaded.error.message };
+    }
+    const state = loaded.state;
 
-    if (phase === 'JUDGING') {
-      // JUDGE ISOLATION: the judge gets ONLY the case + public transcript.
-      // No bets, balances, player names, or raw clues are passed. Keep it that way.
-      const verdict = await callAi('judge', () => ai.judge({ caseData, transcript }), VerdictSchema);
+    // Tell clients "Agents thinking…" while the model call runs.
+    await db.from('rounds').update({ ai_step_status: 'running' }).eq('id', roundId).eq('phase', phase);
+    await db.rpc('bump_version');
 
-      // upsert = insert, or overwrite if this round already has a verdict (e.g. retry).
-      // The verdicts table is unreadable by browsers; /api/state only reveals it after settlement.
-      const { error } = await db.from('verdicts').upsert({
-        round_id: roundId, winner: verdict.winner,
-        rationale: verdict.rationale, scores_json: verdict.scores,
+    const ai = getAi();
+    let next: AiRoundState;
+    let message: PublicArgument | null = null;
+    let verdict: Record<string, unknown> | null = null;
+    let phaseDone: boolean;
+
+    if (phase === 'OPENINGS') {
+      const side = nextOpeningSide(state);
+      if (!side) return await finishWithoutCall(roundId, owner, phase, state);
+      const step = await ai.generateOpening(state, side, { timeoutMs: AGENT_TIMEOUT_MS });
+      if (!step.ok) return await failStep(roundId, phase, step.error);
+      next = step.state;
+      message = step.argument;
+      phaseDone = nextOpeningSide(next) === null;
+    } else if (phase === 'DEBATE') {
+      if (turnsOf(state) >= state.maxTurns) return await finishWithoutCall(roundId, owner, phase, state);
+      const step = await ai.nextTurn(state, {
+        submissions: await loadSubmissions(roundId),     // cumulative: every clue of the round, both sides
+        turn: state.transcript.length + 1,              // makes a repeat of the same turn safe
+        timeoutMs: Math.min(AGENT_TIMEOUT_MS, Math.max(msLeft, MIN_TURN_MS)),
       });
-      if (error) throw error;
+      if (!step.ok) {
+        if (step.error.code === 'round_complete') return await finishWithoutCall(roundId, owner, phase, state);
+        return await failStep(roundId, phase, step.error);
+      }
+      next = step.state;
+      message = step.argument;                          // NOT step.private / step.telemetry: server-only
+      phaseDone = turnsOf(next) >= next.maxTurns;
     } else {
-      // Map phase → stage name used in the transcript.
-      const stage: Stage = phase === 'OPENINGS' ? 'opening' : phase === 'REBUTTALS' ? 'rebuttal' : 'final';
-
-      // Openings have no clues; rebuttals use window 1; finals use window 2.
-      const pair = phase === 'OPENINGS'
-        ? await callAi('opening', () => ai.generateOpening({ caseData }), PairSchema)
-        : await callAi(stage, async () => ai.generatePair({
-            caseData,
-            transcript,
-            stage: stage as 'rebuttal' | 'final',
-            selectedClues: await selectClues(roundId, phase === 'REBUTTALS' ? 1 : 2),
-          }), PairSchema);
-
-      // Save both lines. Ordinals continue the transcript: openings 1–2, rebuttals 3–4, finals 5–6.
-      // We set side/stage OURSELVES (not trusting the model's fields).
-      // ignoreDuplicates + the unique (round_id, stage, speaker) constraint = retry-safe.
-      const sides = ['A', 'B'] as const;
-      const { error } = await db.from('debate_messages').upsert(
-        sides.map((side, i) => ({
-          round_id: roundId, stage, speaker: side,
-          line_text: pair[side].text, ordinal: transcript.length + i + 1,
-        })),
-        { onConflict: 'round_id,stage,speaker', ignoreDuplicates: true },
-      );
-      if (error) throw error;
+      // JUDGING. Judge isolation is enforced inside the engine: it sees only the public scenario,
+      // the locked interpretations and the public transcript. No bets, balances, clues or player ids.
+      const step = await ai.judge(state, { timeoutMs: JUDGE_TIMEOUT_MS });
+      if (!step.ok) return await failStep(roundId, phase, step.error);
+      next = step.state;
+      verdict = {
+        winner: step.verdict.winner,
+        explanation: step.verdict.explanation,
+        summary: step.verdict.summary ?? null,
+        scores: step.verdict.scores,
+        verdict: step.verdict,
+        complete: step.complete,
+        turnsCompleted: step.turnsCompleted,
+      };
+      phaseDone = true;
     }
 
-    // ---------- Success ----------
-    await db.from('rounds').update({ ai_step_status: 'done' }).eq('id', roundId).eq('phase', phase);
-    await db.rpc('bump_version');
-    return { status: 'done' };
-  } catch (e) {
-    // ---------- Failure: record it so the host can see what went wrong ----------
-    await db.from('rounds')
-      .update({ ai_step_status: 'failed', ai_error: String(e).slice(0, 500) })
-      .eq('id', roundId);
-    await db.rpc('bump_version');
-    throw e;                                    // let the caller decide what to do
+    // ---------- Commit (state CAS + public line/verdict + round status, one transaction) ----------
+    const committed = await commit(roundId, owner, phase, state.revision, next, message, verdict, phaseDone);
+    if (!committed) return { status: 'skipped' };       // lost a race: result discarded, someone else's is stored
+    return { status: phaseDone ? 'done' : 'progress', message: message?.text };
+  } finally {
+    // No-op if commit already cleared the lease; otherwise frees it on failure/early return.
+    await release();
   }
 }
+
+/* ==========================================================================================
+ * 4. AI step helpers
+ * ======================================================================================== */
+
+const turnsOf = (s: AiRoundState) => s.transcript.filter((e) => e.stage === 'turn').length;
+const nextOpeningSide = (s: AiRoundState): Side | null => {
+  const has = (side: Side) => s.transcript.some((e) => e.stage === 'opening' && e.side === side);
+  return !has('A') ? 'A' : !has('B') ? 'B' : null;
+};
+
+async function commit(
+  roundId: string, owner: string, phase: Phase, expectedRevision: number, next: AiRoundState,
+  message: PublicArgument | null, verdict: Record<string, unknown> | null, phaseDone: boolean,
+): Promise<boolean> {
+  const { data, error } = await db.rpc('commit_ai_step', {
+    p_round: roundId,
+    p_owner: owner,
+    p_phase: phase,
+    p_expected_revision: expectedRevision,
+    p_new_revision: next.revision,
+    p_state: JSON.parse(serializeRound(next)),
+    p_message: message && {
+      key: message.key, side: message.side, stage: message.stage, sequence: message.sequence,
+      debateTurn: message.debateTurn ?? null, text: message.text,
+    },
+    p_verdict: verdict,
+    p_ai_status: phaseDone ? 'done' : 'idle',
+  });
+  if (error) throw error;
+  return data === true;
+}
+
+/** Nothing left to generate in this phase (e.g. retried after success): mark it done without a model call. */
+async function finishWithoutCall(roundId: string, owner: string, phase: Phase, state: AiRoundState): Promise<RunAiResponse> {
+  const ok = await commit(roundId, owner, phase, state.revision, state, null, null, true);
+  return { status: ok ? 'done' : 'skipped' };
+}
+
+async function failStep(roundId: string, phase: Phase, error: AiError): Promise<RunAiResponse> {
+  console.warn(`[ai] ${phase} failed: ${error.code}${error.modelErrorKind ? `/${error.modelErrorKind}` : ''}: ${error.message}`);
+  await recordFailure(roundId, phase, error);
+  return { status: 'failed', error: error.message };
+}
+
+/** Record a failed call on the round so the host (and the autopilot's retry limit) can see it. State is unchanged. */
+async function recordFailure(roundId: string, phase: Phase, error: AiError) {
+  const round = await getRound(roundId);
+  await db.from('rounds')
+    .update({
+      ai_step_status: 'failed',
+      ai_error: `${error.code}: ${error.message}`.slice(0, 500),
+      ai_error_retryable: error.retryable,
+      ai_failures: round.ai_failures + 1,
+    })
+    .eq('id', roundId).eq('phase', phase);
+  await db.rpc('bump_version');
+}
+
+/* ==========================================================================================
+ * 5. Cancel / reset
+ * ======================================================================================== */
 
 /** Cancel the round and refund every stake exactly once (SQL guarantees "once"). */
 export async function cancelRound(roundId: string): Promise<number> {

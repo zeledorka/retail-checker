@@ -28,12 +28,12 @@ Content-Type: application/json
 
 { "roundId": "PASTE_ROUND_ID", "side": "A", "stake": 20 }
 
-### Inject
+### Inject — ONE clue per player per round, during OPENINGS or DEBATE, max 200 chars (side = your bet)
 POST {{base}}/api/inject
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "roundId": "PASTE_ROUND_ID", "window": 1, "text": "Point out the muddy footprints." }
+{ "roundId": "PASTE_ROUND_ID", "text": "Point out the muddy footprints." }
 
 ### Reset (fresh game, everyone back to 100)
 POST {{base}}/api/admin/reset
@@ -44,23 +44,25 @@ POST {{base}}/api/admin/start
 x-admin-secret: {{admin}}
 
 ### Advance — change expectedPhase each time:
-### REVEAL → BETTING → OPENINGS → INJECT_1 → REBUTTALS → INJECT_2 → FINALS → JUDGING → RESULTS → (next round)
+### REVEAL → BETTING → OPENINGS → DEBATE → JUDGING → RESULTS → (next round)
+### OPENINGS needs both openings done, JUDGING needs the verdict: use "Run next AI step" below until status is "done".
+### DEBATE can be advanced any time (the judge rules on the turns that exist).
 POST {{base}}/api/admin/advance
 x-admin-secret: {{admin}}
 Content-Type: application/json
 
 { "expectedPhase": "REVEAL" }
 
-### Autopilot step (call repeatedly instead of advance)
+### Autopilot step (call repeatedly instead of advance) — or run: npx tsx --env-file=.env scripts/dev/autopilot.ts
 POST {{base}}/api/admin/tick
 x-admin-secret: {{admin}}
 
-### Retry a failed AI step
+### Run next AI step / retry a failed one (one model call: next opening, next turn, or the judge)
 POST {{base}}/api/admin/run-ai
 x-admin-secret: {{admin}}
 Content-Type: application/json
 
-{ "roundId": "PASTE_ROUND_ID", "expectedPhase": "JUDGING" }
+{ "roundId": "PASTE_ROUND_ID", "expectedPhase": "OPENINGS" }
 
 ### Cancel + refund
 POST {{base}}/api/admin/cancel

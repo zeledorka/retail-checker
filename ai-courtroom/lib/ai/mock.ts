@@ -1,47 +1,54 @@
-// lib/ai/mock.ts — fake AI so the whole game works without any API key
-import type { AgentLine, CourtroomAI, Side, Stage } from '@/types/game';
+// lib/ai/mock.ts — a fake MODEL PROVIDER for Dev 1's engine (adapted from ai/examples/mock-round.ts).
+// The real engine still runs: state, ordering, word limits, audience grouping and verdict validation are all
+// exercised. Only the network call to Claude is replaced. No API key, no cost.
+//
+//   MOCK_AI_DELAY_MS=800   fake "thinking" time per call (default 800)
+//   MOCK_JUDGE_FAIL=1      the judge always fails -> test retry / cancel + refund
+import 'server-only';
+import type { GenerateTextFn } from '@courtroom/ai';
+import { JUDGE_SYSTEM } from '@courtroom/ai/prompts';
 
-// A Promise that resolves after `ms` milliseconds. Used to fake model "thinking" time,
-// so the frontend's "Agents thinking…" state gets exercised.
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Small helper to build an AgentLine without repeating the field names everywhere.
-const line = (side: Side, stage: Stage, text: string): AgentLine => ({ side, stage, text });
+export const mockGenerate: GenerateTextFn = async (cfg, req) => {
+  await sleep(Number(process.env.MOCK_AI_DELAY_MS ?? 800));
+  const isJudge = req.system === JUDGE_SYSTEM;
+  const side = req.system.includes('You are Agent A') ? 'A' : 'B';
 
-export const mockAI: CourtroomAI = {
-  // `async generateOpening({ caseData })` = a method that receives one object and
-  // immediately pulls out its `caseData` property (destructuring in the parameter list).
-  async generateOpening({ caseData }) {
-    await sleep(800);
-    return {
-      A: line('A', 'opening', `Defence A: the evidence shows ${caseData.hypothesisA}`),
-      B: line('B', 'opening', `Defence B: clearly ${caseData.hypothesisB}`),
-    };
-  },
-
-  async generatePair({ selectedClues, stage }) {
-    await sleep(1200);
-    // Echo the first audience tip so you can SEE clues reaching the right side.
-    // `?.text ?? '...'`: if there is no first clue, use the fallback text.
-    const tip = (s: Side) => selectedClues[s][0]?.text ?? 'no audience tips this time';
-    return {
-      A: line('A', stage, `[A ${stage}] Taking the gallery's advice: "${tip('A')}"`),
-      B: line('B', stage, `[B ${stage}] My supporters say: "${tip('B')}"`),
-    };
-  },
-
-  async judge({ transcript }) {
-    await sleep(1500);
-    // Lets you test the "judge failed → retry / cancel + refund" path.
-    // Set MOCK_JUDGE_FAIL=1 in .env.local and restart `npm run dev`.
-    if (process.env.MOCK_JUDGE_FAIL === '1') throw new Error('Mock judge failure');
-
-    // `const winner: Side = ...` annotates the type so TS knows it's 'A' | 'B', not string.
-    const winner: Side = Math.random() < 0.5 ? 'A' : 'B';
-    return {
+  if (isJudge) {
+    if (process.env.MOCK_JUDGE_FAIL === '1') {
+      return { ok: false, error: { kind: 'provider_error', message: 'Mock judge failure (MOCK_JUDGE_FAIL=1)', retryable: true } };
+    }
+    // Random winner, with scores that agree with it (the engine rejects a winner that contradicts the totals).
+    const winner = Math.random() < 0.5 ? 'A' : 'B';
+    const strong = { evidence: 7, logic: 7, rebuttal: 8, persuasion: 7 };
+    const weak = { evidence: 6, logic: 6, rebuttal: 6, persuasion: 6 };
+    const text = JSON.stringify({
       winner,
-      rationale: `Mock ruling: ${winner} tied claims to evidence more consistently across ${transcript.length} statements.`,
-      scores: { A: winner === 'A' ? 7 : 5, B: winner === 'B' ? 7 : 5 },
-    };
-  },
+      explanation: `Mock ruling: Agent ${winner} answered the opponent's strongest point more directly.`,
+      summary: `Agent ${winner} rebutted more directly.`,
+      scores: { A: winner === 'A' ? strong : weak, B: winner === 'B' ? strong : weak },
+      strengths: { A: ['Clear framing'], B: ['Clear framing'] },
+      weaknesses: { A: ['Some assumption'], B: ['Some assumption'] },
+      references: [{ ref: 'E1', side: 'A', note: 'opening sets the frame' }],
+      unsupportedAssumptions: [],
+      decisiveExchange: { refs: ['E1', 'E2'], description: 'the openings' },
+    });
+    return { ok: true, result: { text, provider: 'anthropic', model: `mock:${cfg.model}`, latencyMs: 5, inputTokens: 1000, outputTokens: 100 } };
+  }
+
+  // A debate turn WITH audience submissions must return structured JSON grouping the audience themes.
+  if (req.system.includes('Output format for this turn')) {
+    const line = req.prompt.split('\n').find((l) => l.startsWith('{"themes"'));
+    const ids = line ? (JSON.parse(line) as { themes: { id: string }[] }).themes.map((t) => t.id) : [];
+    const text = JSON.stringify({
+      argument: `[Mock ${side}] My supporters raise a fair point: the evidence fits my reading better than my opponent's inference.`,
+      audienceAnalysis: { groups: ids.length ? [{ label: 'Main idea', wordingIds: ids.join(' '), relevance: 'high', used: true }] : [], unassigned: {} },
+    });
+    return { ok: true, result: { text, provider: 'anthropic', model: `mock:${cfg.model}`, latencyMs: 5, inputTokens: 1000, outputTokens: 100 } };
+  }
+
+  // Opening, or a turn with no audience: plain text.
+  const text = `[Mock ${side}] The evidence supports my reading, and my opponent's inference does not follow from it.`;
+  return { ok: true, result: { text, provider: 'anthropic', model: `mock:${cfg.model}`, latencyMs: 5, inputTokens: 1000, outputTokens: 100 } };
 };

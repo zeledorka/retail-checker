@@ -19,7 +19,9 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@courtroom/ai": ["../ai/src/index.ts"],
+      "@courtroom/ai/*": ["../ai/src/*"]
     }
   },
   "include": [

@@ -2,8 +2,9 @@
 // The join, state, and leaderboard APIs overlap in data needs, so this file covers loading them.
 import 'server-only';
 import { db } from '@/lib/supabase/admin';
+import { MAX_TURNS } from '@/lib/game/constants';
 import type {
-  AudienceClue, Case, LeaderboardEntry, Phase, PublicMessage, PublicRound, Side, StateResponse,
+  Case, LeaderboardEntry, Phase, PublicMessage, PublicRound, PublicVerdict, Side, StateResponse,
 } from '@/types/game';
 
 type GameRow = {
@@ -17,8 +18,16 @@ type RoundRow = {
   winner: Side | null; settled_at: string | null;
 };
 type CaseRow = {
-  id: string; scenario: string; hypothesis_a: string; hypothesis_b: string;
-  evidence_json: string[]; image_url: string;
+  id: string; title: string; description: string; interpretation_a: string; interpretation_b: string;
+  evidence_json: string[]; image_url: string | null;
+};
+type MessageRow = {
+  id: string; arg_key: string; speaker: Side; stage: 'opening' | 'turn'; ordinal: number;
+  debate_turn: number | null; line_text: string; created_at: string;
+};
+type VerdictRow = {
+  winner: Side; rationale: string; summary: string | null; scores_json: PublicVerdict['scores'];
+  complete: boolean; turns_completed: number;
 };
 
 /* ------------------------------------------------------------------------------------------
@@ -28,11 +37,22 @@ type CaseRow = {
  * ---------------------------------------------------------------------------------------- */
 const toCase = (c: CaseRow): Case => ({
   id: c.id,
-  scenario: c.scenario,
-  hypothesisA: c.hypothesis_a,
-  hypothesisB: c.hypothesis_b,
+  title: c.title,
+  description: c.description,
   evidence: c.evidence_json,
+  interpretationA: c.interpretation_a,
+  interpretationB: c.interpretation_b,
   imageUrl: c.image_url,
+});
+
+const toMessage = (m: MessageRow): PublicMessage => ({
+  id: m.id, key: m.arg_key, side: m.speaker, stage: m.stage, sequence: m.ordinal,
+  debateTurn: m.debate_turn, text: m.line_text, createdAt: m.created_at,
+});
+
+const toVerdict = (v: VerdictRow): PublicVerdict => ({
+  winner: v.winner, explanation: v.rationale, summary: v.summary, scores: v.scores_json,
+  complete: v.complete, turnsCompleted: v.turns_completed,
 });
 
 /** Fetch the single active game. Throws if missing (means the migration wasn't run). */
@@ -72,7 +92,7 @@ export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
  *
  * SECURITY RULES ENFORCED HERE (this is "the serializer" the spec talks about):
  *   - verdict winner/rationale only after the round is settled AND in RESULTS
- *   - only SELECTED clues are public, and never with player ids
+ *   - audience clues are never public (only the player's own clue, in `me`); the AI state is never read here
  *   - other players' bets are never included
  */
 export async function buildState(userId: string | null): Promise<StateResponse> {
@@ -90,41 +110,27 @@ export async function buildState(userId: string | null): Promise<StateResponse> 
   // awaiting one after another. The `[a, b, c] = await ...` syntax unpacks the results.
   let caseData: Case | null = null;
   let messages: PublicMessage[] = [];
-  const selectedClues: { A: AudienceClue[]; B: AudienceClue[] } = { A: [], B: [] };
-  let rationale: string | null = null;
+  let verdict: PublicVerdict | null = null;
 
   // A round's result is revealed only when BOTH are true.
   const revealed = round !== null && round.phase === 'RESULTS' && round.settled_at !== null;
 
   if (round) {
-    const [caseRes, msgRes, clueRes, verdictRes] = await Promise.all([
+    // Public lines come from debate_messages (written in the same transaction as the AI state).
+    // We never read ai_round_states here: it holds private audience messages and player ids.
+    const [caseRes, msgRes, verdictRes] = await Promise.all([
       db.from('cases').select('*').eq('id', round.case_id).single(),
       db.from('debate_messages').select('*').eq('round_id', round.id).order('ordinal'),
-      // Select specific columns ONLY. We deliberately do not select player_id.
-      db.from('injections').select('id, side, text, inject_window')
-        .eq('round_id', round.id).eq('selected', true),
-      // Only even ASK the DB for the verdict when it's revealed. Promise.resolve(...) is a
-      // ready-made "fake" result so the array shape stays the same.
+      // Only even ASK the DB for the verdict when it's revealed.
       revealed
-        ? db.from('verdicts').select('rationale').eq('round_id', round.id).maybeSingle()
+        ? db.from('verdicts').select('winner, rationale, summary, scores_json, complete, turns_completed')
+            .eq('round_id', round.id).maybeSingle()
         : Promise.resolve({ data: null }),
     ]);
 
     if (caseRes.data) caseData = toCase(caseRes.data as CaseRow);
-
-    messages = (msgRes.data ?? []).map((m) => ({
-      id: m.id, side: m.speaker, text: m.line_text, stage: m.stage,
-      ordinal: m.ordinal, createdAt: m.created_at,
-    }));
-
-    for (const c of clueRes.data ?? []) {
-      // `as Side` narrows a plain string to 'A' | 'B' so we can use it as an object key.
-      selectedClues[c.side as Side].push({
-        id: c.id, side: c.side, text: c.text, window: c.inject_window as 1 | 2,
-      });
-    }
-
-    rationale = (verdictRes.data as { rationale: string } | null)?.rationale ?? null;
+    messages = ((msgRes.data ?? []) as MessageRow[]).map(toMessage);
+    if (verdictRes.data) verdict = toVerdict(verdictRes.data as VerdictRow);
   }
 
   const publicRound: PublicRound | null = round && {
@@ -134,9 +140,10 @@ export async function buildState(userId: string | null): Promise<StateResponse> 
     phaseStartedAt: round.phase_started_at,
     phaseEndsAt: round.phase_ends_at,
     aiStepStatus: round.ai_step_status,
-    selectedClues,
+    turnsCompleted: messages.filter((m) => m.stage === 'turn').length,
+    maxTurns: MAX_TURNS,
     winner: revealed ? round.winner : null,  // <- the critical gate
-    rationale: revealed ? rationale : null,
+    verdict: revealed ? verdict : null,
   };
 
   // ---- "me": only when a player is signed in ----
@@ -148,8 +155,8 @@ export async function buildState(userId: string | null): Promise<StateResponse> 
         ? db.from('bets').select('side, stake').eq('round_id', round.id).eq('player_id', userId).maybeSingle()
         : Promise.resolve({ data: null }),
       round
-        ? db.from('injections').select('inject_window, text').eq('round_id', round.id).eq('player_id', userId)
-        : Promise.resolve({ data: [] }),
+        ? db.from('injections').select('text').eq('round_id', round.id).eq('player_id', userId).maybeSingle()
+        : Promise.resolve({ data: null }),
     ]);
     // A signed-in user who hasn't called /api/join yet has no player row, so me stays null.
     if (playerRes.data) {
@@ -157,8 +164,7 @@ export async function buildState(userId: string | null): Promise<StateResponse> 
         nickname: playerRes.data.nickname,
         tokens: playerRes.data.tokens,
         bet: (betRes.data as { side: Side; stake: number } | null) ?? null,
-        injections: ((injRes.data ?? []) as { inject_window: 1 | 2; text: string }[])
-          .map((i) => ({ window: i.inject_window, text: i.text })),
+        injection: (injRes.data as { text: string } | null) ?? null,
       };
     }
   }

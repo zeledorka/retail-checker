@@ -42,11 +42,14 @@ consume the UI types in `lib/types.ts`.
 
 - **`/play`**: player screen (mobile-first). Join with a nickname, bet tokens on Agent A (▲) or Agent B (◆), send one
   suggestion per round to the agent you backed, then see WIN / LOSE, your token change and the verdict. Survives refresh.
-- **`/projector`**: 16:9 courtroom display: lobby with join QR code, case reveal, betting, live debate, judging, a 15 s
-  judge-verdict screen, then winner + leaderboard. `/` redirects to `/play`.
+- **`/projector`**: 16:9 courtroom display: lobby with join QR code, case reveal, betting, live debate, judging, a
+  judge-verdict screen (up to 15 s, shorter if the server's results phase is short), then winner + leaderboard.
+  `/` redirects to `/play`.
 - **Host dock** (on `/projector`): press `U` (or click the bottom-right corner) and enter `ADMIN_SECRET` to unlock. Start
-  round, Advance phase, Run AI step, Cancel + refund, Skip to leaderboard. `H` hides it, it fades when idle, and
-  `/projector?view=display` never shows it. The secret is kept in sessionStorage only.
+  round, Advance phase, Run AI step, Cancel + refund, Tick (one autopilot step), Autopilot (ticks every second: runs the
+  AI turns and advances phases when their time is up), Reset game, Skip to leaderboard. `H` hides it (autopilot keeps
+  running), it fades when idle, and `/projector?view=display` never shows it. The secret is kept in sessionStorage only.
 - **Mock mode** (`NEXT_PUBLIC_USE_MOCK=1`, the default): no backend needed. `/play` and `/projector` in the same browser
   share one simulated game; jump between phases with the mock phase switcher in the host dock or the 🧪 button on `/play`.
-  Set `NEXT_PUBLIC_USE_MOCK=0` (plus the Supabase variables in `.env.example`) to use the real API.
+  Set `NEXT_PUBLIC_USE_MOCK=0` in `ai-courtroom/.env` (copied from `.env.example`, plus the Supabase and admin variables)
+  to use the real API; restart `npm run dev` afterwards (`NEXT_PUBLIC_*` values are read at build/start time).

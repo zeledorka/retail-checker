@@ -122,8 +122,9 @@ export default function ProjectorPage() {
       <Courtroom state={state} offset={serverOffset} joinUrl={joinUrl} joinFull={joinFull} results={results} />
       {error && <p className="fixed left-1/2 top-2 -translate-x-1/2 rounded-full bg-agent-a px-4 py-1 text-sm font-black">📡 Reconnecting…</p>}
 
-      {canDock && adm.secret && !dockHidden && (
-        <HostDock state={state} secret={adm.secret} onLock={adm.lock} refetch={refetch} idle={idle}
+      {/* H hides the dock but keeps it mounted, so a running autopilot doesn't stop. */}
+      {canDock && adm.secret && (
+        <HostDock state={state} secret={adm.secret} onLock={adm.lock} refetch={refetch} idle={idle} forceHidden={dockHidden}
           onSkipVerdict={results.screen === "verdict" ? results.skip : undefined} />
       )}
       {canDock && !adm.secret && (

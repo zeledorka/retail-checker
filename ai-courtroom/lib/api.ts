@@ -295,4 +295,20 @@ export const admin = {
     const r = await http<CancelResponse>("/api/admin/cancel", { method: "POST", admin: secret, body: JSON.stringify({ roundId }) });
     return { ok: true, detail: `Cancelled, ${r.refunded} refunded` };
   },
+  /**
+   * One autopilot step (POST /api/admin/tick): at most ONE thing per call: an AI call, a phase change when the
+   * phase's time is up (or its AI work is done), or nothing. Safe to overlap. Does nothing in the lobby.
+   */
+  async tick(secret: string): Promise<AdminResult> {
+    if (USE_MOCK) return mock.mockAdminTick();
+    const r = await http<TickResponse>("/api/admin/tick", { method: "POST", admin: secret });
+    if (r.ai) return aiToast(r.ai);
+    return { ok: true, kind: r.changed ? "ok" : "info", detail: r.changed ? `Now ${r.phase ?? "game over"}` : "Tick: nothing to do yet" };
+  },
+  /** Rehearsal reset: fresh game, every player back to 100 tokens, all cases unused. */
+  async reset(secret: string): Promise<AdminResult> {
+    if (USE_MOCK) return mock.mockAdminReset();
+    await http<ResetResponse>("/api/admin/reset", { method: "POST", admin: secret });
+    return { ok: true, detail: "Game reset: back to the lobby, everyone at 100 tokens" };
+  },
 };

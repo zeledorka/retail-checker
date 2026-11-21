@@ -313,6 +313,45 @@ export async function mockAdminCancel() {
   return { ok: true as const, detail: "Round cancelled, bets refunded" };
 }
 
+/** Mirrors the real backend's RESULTS (10s) / CANCELLED (8s) lengths, used only by the mock autopilot tick. */
+const MOCK_TICK_RESULTS_S = 10;
+const MOCK_TICK_CANCELLED_S = 8;
+
+/**
+ * Mock of POST /api/admin/tick. Mock phases already advance with the clock, so a tick only has work to do where the
+ * real autopilot would: leaving RESULTS / CANCELLED for the next round once that phase's time is up.
+ */
+export async function mockAdminTick() {
+  await delay(80, 200);
+  const s = load();
+  const now = simNow();
+  const e = elapsedOf(s, now);
+  const phase = phaseAt(s, e);
+  if (s.t0 === null) return { ok: true as const, kind: "info" as const, detail: "Tick: lobby, start a round first" };
+  if (s.frozenElapsed !== null) return { ok: true as const, kind: "info" as const, detail: "Tick: mock clock is frozen" };
+  const over =
+    (phase === "results" && e - T.results >= MOCK_TICK_RESULTS_S) ||
+    (phase === "cancelled" && s.cancelledAt !== null && (now - s.cancelledAt) / 1000 >= MOCK_TICK_CANCELLED_S);
+  if (over) {
+    startRound(s);
+    save(s);
+    return { ok: true as const, kind: "ok" as const, detail: `Now REVEAL (round ${s.roundNumber})` };
+  }
+  return { ok: true as const, kind: "info" as const, detail: "Tick: nothing to do yet" };
+}
+
+/** Mock of POST /api/admin/reset: back to the lobby, every player at 100 tokens, no bets. */
+export async function mockAdminReset() {
+  await delay(200, 500);
+  const s = load();
+  const players = s.players;
+  for (const p of Object.values(players)) {
+    p.tokens = START_TOKENS; p.bet = null; p.suggestion = null; p.delta = null; p.refunded = false; p.before = null; p.round = 0; p.settledRound = -1;
+  }
+  save({ ...fresh(), players });
+  return { ok: true as const, detail: "Game reset: back to the lobby, everyone at 100 tokens" };
+}
+
 // ---- phase switcher (mock only) ----
 
 export type MockPreset =

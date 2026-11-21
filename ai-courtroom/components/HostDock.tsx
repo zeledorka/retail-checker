@@ -8,16 +8,24 @@ import { MockSwitcher } from "./MockSwitcher";
 import { PHASE_LABEL } from "./sides";
 
 type Toast = { id: number; text: string; kind: "ok" | "info" | "err" };
-type Action = "start" | "advance" | "ai" | "cancel";
+type Action = "start" | "advance" | "ai" | "cancel" | "tick" | "reset";
+/** Autopilot interval: the backend expects /api/admin/tick about once a second. */
+const AUTOPILOT_MS = 1000;
 
-export function HostDock({ state, secret, onLock, refetch, idle, onSkipVerdict }: {
+export function HostDock({ state, secret, onLock, refetch, idle, onSkipVerdict, forceHidden = false }: {
   state: UiGameState | null; secret: string; onLock: () => void; refetch: () => Promise<void>; idle: boolean;
+  /** H key: fully hidden but still MOUNTED, so a running autopilot keeps going. */
+  forceHidden?: boolean;
   /** Only passed while the projector shows the verdict screen. Client-side only, no API call. */
   onSkipVerdict?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<Action | null>(null);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [autopilot, setAutopilot] = useState(false);
+  const busyRef = useRef<Action | null>(null);
+  busyRef.current = busy;
   const [toasts, setToasts] = useState<Toast[]>([]);
   const nextId = useRef(0);
 
@@ -37,11 +45,42 @@ export function HostDock({ state, secret, onLock, refetch, idle, onSkipVerdict }
 
   const r = state?.round ?? null;
   const canAdvance = !!r && r.phase !== "lobby";
-  useEffect(() => { if (!open) setConfirmCancel(false); }, [open]);
+  useEffect(() => { if (!open) { setConfirmCancel(false); setConfirmReset(false); } }, [open]);
 
-  const hidden = idle && !open && !busy;
+  // Autopilot: call /api/admin/tick about once a second, one call at a time (each call does at most ONE thing:
+  // an AI call, a phase change when time is up / AI work is done, or nothing). Pauses while a manual action runs.
+  // Only changes and errors are toasted, not every quiet tick. Stops itself after 3 consecutive errors.
+  useEffect(() => {
+    if (!autopilot) return;
+    let stopped = false;
+    let errors = 0;
+    let timer: ReturnType<typeof setTimeout>;
+    const loop = async () => {
+      if (stopped) return;
+      if (!busyRef.current) {
+        try {
+          const r = await admin.tick(secret);
+          errors = 0;
+          if (r.kind === "error") toast(r.detail ?? "Tick failed", "err");
+          else if (r.kind !== "info") toast(r.detail ?? "Tick", "ok");
+          await refetch();
+        } catch (e) {
+          errors += 1;
+          toast(`Autopilot: ${friendly(e)}`, "err");
+          if (errors >= 3) { toast("Autopilot stopped after 3 errors", "err"); setAutopilot(false); return; }
+        }
+      }
+      if (!stopped) timer = setTimeout(loop, AUTOPILOT_MS);
+    };
+    loop();
+    return () => { stopped = true; clearTimeout(timer); };
+    // toast/refetch are stable enough for this loop; restarting it on every render would double-tick.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autopilot, secret]);
+
+  const hidden = forceHidden || (idle && !open && !busy);
   return (
-    <div className={`fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2 transition-opacity duration-500 ${hidden ? "pointer-events-none opacity-0" : "opacity-100"}`}>
+    <div className={`fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2 transition-opacity duration-500 ${hidden ? "pointer-events-none opacity-0" : "opacity-100"}`} aria-hidden={forceHidden || undefined}>
       {toasts.map((t) => (
         <div key={t.id} role="status" className={`animate-slide-up max-w-72 rounded-lg px-3 py-1.5 text-xs font-black shadow ${t.kind === "ok" ? "bg-win text-white" : t.kind === "info" ? "bg-white text-ink" : "bg-agent-a text-white"}`}>{t.text}</div>
       ))}
@@ -56,6 +95,7 @@ export function HostDock({ state, secret, onLock, refetch, idle, onSkipVerdict }
             {r ? <>R{r.number} · {PHASE_LABEL[r.phase]} ({r.rawPhase}) · AI {r.aiStatus}<br />turns {r.turnsCompleted}/{r.maxTurns} · players {state?.playerCount ?? 0}
               {r.betTotals && <> · bets A {r.betTotals.A.players}/{r.betTotals.A.tokens}🪙 B {r.betTotals.B.players}/{r.betTotals.B.tokens}🪙</>}</>
               : <>No round · players {state?.playerCount ?? 0}</>}
+            {autopilot && <><br /><span className="text-win">● Autopilot ON</span></>}
           </p>
           <div className="mt-2 grid grid-cols-2 gap-2">
             <DockBtn label="Start round" busy={busy === "start"} disabled={!!busy} onClick={() => run("start", () => admin.start(secret))} className="bg-win" />
@@ -70,13 +110,30 @@ export function HostDock({ state, secret, onLock, refetch, idle, onSkipVerdict }
               </div>
             )}
           </div>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <DockBtn label="Tick (1 step)" busy={busy === "tick"} disabled={!!busy} onClick={() => run("tick", () => admin.tick(secret))} className="bg-court-light" />
+            <label className={`flex cursor-pointer items-center justify-center gap-2 rounded-xl px-2 py-2 text-xs font-black ${autopilot ? "bg-win text-white" : "bg-court/10 text-ink"}`}
+              title="Calls /api/admin/tick every second: runs the AI turns and moves to the next phase when its time is up.">
+              <input type="checkbox" checked={autopilot} onChange={(e) => setAutopilot(e.target.checked)} className="accent-court" />
+              Autopilot
+            </label>
+          </div>
+          {!confirmReset ? (
+            <DockBtn label="Reset game…" busy={busy === "reset"} disabled={!!busy} onClick={() => setConfirmReset(true)} className="mt-2 bg-ink/70" />
+          ) : (
+            <div className="mt-2 grid grid-cols-[2fr_1fr] gap-1">
+              <DockBtn label="Confirm reset (all players back to 100)" busy={busy === "reset"} disabled={!!busy}
+                onClick={() => { setConfirmReset(false); setAutopilot(false); run("reset", () => admin.reset(secret)); }} className="bg-agent-a" />
+              <DockBtn label="Back" busy={false} disabled={!!busy} onClick={() => setConfirmReset(false)} className="bg-ink/60" />
+            </div>
+          )}
           {onSkipVerdict && (
             <button type="button" onClick={onSkipVerdict} className="btn-chunky mt-2 w-full bg-gold py-2 text-xs text-ink !shadow-[0_3px_0_rgba(0,0,0,0.3)]">
               Skip to leaderboard ⏭
             </button>
           )}
           {USE_MOCK && <div className="mt-3 border-t pt-2"><MockSwitcher onChange={refetch} /></div>}
-          <p className="mt-2 text-[10px] font-bold text-ink/50">H: hide dock · auto-hides when idle</p>
+          <p className="mt-2 text-[10px] font-bold text-ink/50">H: hide dock (autopilot keeps running) · auto-hides when idle</p>
         </div>
       )}
 

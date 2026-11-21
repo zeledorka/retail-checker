@@ -1,85 +1,38 @@
-# Rails Hackathon Starter Kit
+# AI Courtroom
 
-## Overview
-A Rails 8.1.1 application providing both a web interface and JSON API for user management. Originally created as a hackathon starter template.
+Kahoot-style multiplayer game: two AI agents debate a case sequentially, players bet virtual tokens on a side, send one
+suggestion to the agent they backed, and an independent AI judge scores the debate.
 
-## Tech Stack
-- **Framework**: Rails 8.1.1
-- **Ruby**: 3.2.4
-- **Database**: SQLite3 (in development)
-- **Frontend**: Tailwind CSS, Hotwire (Turbo + Stimulus)
-- **Authentication**:
-  - Web: Session-based with `has_secure_password`
-  - API: JWT tokens
-- **Server**: Puma
+## Layout
+- `ai-courtroom/`: Next.js 16 (App Router) + TypeScript + Tailwind 4 frontend. **Frontend only on this branch** (Dev 2).
+  Backend routes (`/api/*`, Supabase) live on `feat/backend-multiplayer-connection` (Dev 3) in the same folder name.
+- `ai/`: the AI debate engine (Dev 3 / AI). Frozen; do not modify. Contract: `ai/INTEGRATION.md`, entry `ai/src/index.ts`.
 
-## Project Structure
+## Frontend (ai-courtroom/)
+- `app/play`: player screen (mobile-first). `app/projector`: 16:9 courtroom + host dock overlay. `/` redirects to `/play`.
+- `lib/types.ts`: UI types. `JudgeVerdict`/`Scenario`/`Side` are imported type-only from `ai/src/types.ts` via the `@ai/*`
+  alias; `PublicArgument` is mirrored from `ai/src/round.ts` (that file pulls in the Anthropic SDK).
+- `lib/api.ts`: typed client for every endpoint + **the single backend->UI adapter** (`adaptState`). Backend shape
+  changes are reconciled there only; components consume `lib/types.ts` exclusively.
+- `lib/mock/`: mock mode (fixtures + simulated server with skewed clock, shared across tabs via localStorage).
+- `lib/useGameState.ts` (2s polling + refetch on focus/online; server clock offset), `useCountdown`, `usePlayer`, `useAdmin`.
+- `components/`: shared Kahoot-style UI. Agent A = red + triangle, Agent B = blue + diamond, always with a label.
 
-### Models
-- `User` (app/models/user.rb)
-  - Fields: email, name, password_digest
-  - Validations: email presence/uniqueness, password minimum 7 characters
-  - Uses bcrypt for password hashing
+## Rules
+- Server is authoritative: render only from `/api/state`; countdowns use server deadlines + measured offset.
+- Never display private AI state, other players' suggestions or ids. Never put secrets in `NEXT_PUBLIC_*`.
+- Admin secret: sessionStorage only, sent as `x-admin-secret`. Never in the URL.
 
-### Controllers
-
-#### Web Controllers
-- `ApplicationController` - Base controller with session authentication
-- `SessionsController` - Login/logout for web interface
-- `UsersController` - User signup and profile management
-
-#### API Controllers (app/controllers/api/v1/)
-- `Api::V1::ApiController` - Base API controller with JWT authentication
-- `Api::V1::AuthController` - JWT login and token refresh
-- `Api::V1::UsersController` - User CRUD operations
-
-### Authentication
-
-**Web (Session-based):**
-- Uses `session[:user_id]`
-- `current_user` helper available in controllers/views
-- `require_authenticated_user` before_action protects routes
-
-**API (JWT-based):**
-- Login: `POST /api/v1/auth/login` with email/password
-- Returns JWT token valid for 24 hours
-- Include in requests: `Authorization: Bearer <token>`
-- Tokens signed with `Rails.application.credentials.secret_key_base`
-
-## API Endpoints
-
-```
-POST   /api/v1/auth/login      - Login (returns JWT + user)
-POST   /api/v1/auth/refresh    - Refresh token (requires JWT)
-GET    /api/v1/users/:id       - Get user details (requires JWT)
-POST   /api/v1/users           - Create user (returns JWT + user)
-PATCH  /api/v1/users/:id       - Update user (requires JWT, own profile only)
-```
-
-## Running the Application
-
-**Local:**
+## Running
 ```bash
-bundle install
-bin/rails db:migrate
-bin/rails server
+cd ai-courtroom
+npm install
+cp .env.example .env.local   # NEXT_PUBLIC_USE_MOCK=1 (mock is also the default when unset)
+npm run dev                  # http://localhost:3000/play  and  /projector
+npm run build                # must pass with no type errors
 ```
+Mock mode: open `/play` (phone) and `/projector` in the same browser; they share the mock game. Projector host dock:
+press `U` (or click the bottom-right corner), any secret works in mock mode; `H` hides the dock; `?view=display` disables it.
+Real backend: set `NEXT_PUBLIC_USE_MOCK=0` plus `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
 
-**Docker:**
-```bash
-docker compose build  # Required after Gemfile changes
-docker compose up
-```
-
-## Key Configuration
-
-- **CORS**: Configured in `config/initializers/cors.rb` (currently allows all origins for development)
-- **Routes**: Web and API routes separated in `config/routes.rb`
-- **Database**: SQLite schema in `db/schema.rb`
-
-## Important Notes
-
-- JWT secret uses Rails' `secret_key_base` - do not expose in production
-- CORS is currently set to `origins '*'`
-- API controllers skip CSRF protection with `skip_before_action :verify_authenticity_token`
-- Docker requires rebuild after Gemfile changes to install new gems
+Note: `ai-courtroom/AGENTS.md` warns that this Next.js version has breaking changes; check `node_modules/next/dist/docs/`.

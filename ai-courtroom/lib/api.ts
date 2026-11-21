@@ -47,7 +47,7 @@ const DEFAULT_MAX_TURNS = 8;
 /** Dev-only (real mode): warn once per missing field so backend shape drift is obvious in the console. */
 const warned = new Set<string>();
 function warnDrift(b: StateResponse) {
-  if (USE_MOCK || process.env.NODE_ENV === "production") return;
+  if (process.env.NODE_ENV === "production") return;
   const miss = (path: string, ok: boolean) => {
     if (ok || warned.has(path)) return;
     warned.add(path);
@@ -68,9 +68,12 @@ function warnDrift(b: StateResponse) {
   if (b.round?.verdict) keys(b.round.verdict, "round.verdict.", ["winner", "explanation", "scores", "complete", "turnsCompleted"]);
 }
 
-/** THE adapter. Backend StateResponse (types/game.ts) -> UiGameState. */
-export function adaptState(b: StateResponse): UiGameState {
-  warnDrift(b);
+/**
+ * THE adapter. Backend StateResponse (types/game.ts) -> UiGameState.
+ * `checkDrift`: dev-only console warnings for missing fields (real mode, and mock "raw-shape fixtures" mode).
+ */
+export function adaptState(b: StateResponse, checkDrift = !USE_MOCK): UiGameState {
+  if (checkDrift) warnDrift(b);
   const r = b.round as BRound | null;
   const phase: UiPhase = r ? PHASE_MAP[r.phase] ?? "lobby" : b.game.status === "GAME_OVER" ? "game_over" : "lobby";
 
@@ -268,7 +271,12 @@ async function http<T>(path: string, init: RequestInit & { auth?: "required" | "
 
 /** `asPlayer=false` for the projector (never sends a player token). */
 export async function getState(asPlayer: boolean): Promise<UiGameState> {
-  if (USE_MOCK) return mock.mockGetState(asPlayer ? getPlayerId() : null);
+  if (USE_MOCK) {
+    const pid = asPlayer ? getPlayerId() : null;
+    // "Use raw-shape fixtures" (mock phase switcher): the mock game in the real /api/state shape, through the real adapter.
+    if (mock.mockIsRaw()) return adaptState(await mock.mockGetRawState(pid), true);
+    return mock.mockGetState(pid);
+  }
   return adaptState(await http<StateResponse>("/api/state", { auth: asPlayer ? "optional" : "none" }));
 }
 

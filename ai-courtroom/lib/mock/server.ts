@@ -4,7 +4,9 @@
 import {
   ApiError, type PublicArgument, type Side, type UiGameState, type UiPhase, type UiRound, type UiVerdict,
 } from "@/lib/types";
+import type { StateResponse } from "@/types/game";
 import { MOCK_BOTS, MOCK_IMAGE_URL, MOCK_LINES, MOCK_ROUND_ID, MOCK_SCENARIO, MOCK_VERDICT } from "./fixtures";
+import { toRawState } from "./rawState";
 
 const KEY = "aic:mock:v1";
 /** Simulated server clock is 3.2s ahead of the device clock. */
@@ -42,6 +44,10 @@ type MockStore = {
   netFail: boolean;
   /** Case image switched off (null imageUrl, like the real seed cases) by the "Case reveal (no image)" preset. */
   noImage?: boolean;
+  /** "Game over" preset: no round, game status GAME_OVER (like the real backend after the last round). */
+  gameOver?: boolean;
+  /** "Raw /api/state shape" toggle: getState returns a raw StateResponse that is run through the real adaptState. */
+  rawShape?: boolean;
   players: Record<string, MockPlayer>;
 };
 
@@ -105,7 +111,7 @@ function settle(s: MockStore, phase: UiPhase): boolean {
 
 function buildState(s: MockStore, playerId: string | null, now: number): UiGameState {
   const e = elapsedOf(s, now);
-  const phase = phaseAt(s, e);
+  const phase: UiPhase = s.gameOver ? "game_over" : phaseAt(s, e);
   const n = phase === "lobby" ? 0 : linesVisible(s, e);
   const transcript: PublicArgument[] = MOCK_LINES.slice(0, n).map((l, i) => ({
     roundId: MOCK_ROUND_ID, stage: i < 2 ? "opening" : "turn", sequence: i + 1,
@@ -175,9 +181,9 @@ function buildState(s: MockStore, playerId: string | null, now: number): UiGameS
   return {
     version: Math.floor(e),
     serverNow: now,
-    game: { status: s.t0 === null ? "lobby" : "in_progress", roundNumber: s.roundNumber, maxRounds: 5 },
-    round, phase,
-    case: s.t0 === null ? null : {
+    game: { status: s.gameOver ? "game_over" : s.t0 === null ? "lobby" : "in_progress", roundNumber: s.roundNumber, maxRounds: 5 },
+    round: s.gameOver ? null : round, phase,
+    case: s.t0 === null || s.gameOver ? null : {
       id: "mock-case", title: MOCK_SCENARIO.title, description: MOCK_SCENARIO.description, evidence: MOCK_SCENARIO.evidence,
       positionA: MOCK_SCENARIO.interpretationA, positionB: MOCK_SCENARIO.interpretationB, imageUrl: s.noImage ? null : MOCK_IMAGE_URL,
     },
@@ -211,6 +217,16 @@ export async function mockGetState(playerId: string | null): Promise<UiGameState
   if (s.netFail) throw new ApiError("NETWORK", "Can't reach the courtroom (simulated network error)");
   return state;
 }
+
+/** Raw-shape mode: the same mock game, serialized exactly like the real GET /api/state (see rawState.ts). */
+export async function mockGetRawState(playerId: string | null): Promise<StateResponse> {
+  await delay(60, 200);
+  const { s, state } = read(playerId);
+  if (s.netFail) throw new ApiError("NETWORK", "Can't reach the courtroom (simulated network error)");
+  return toRawState(state);
+}
+export function mockIsRaw() { return !!load().rawShape; }
+export function mockSetRaw(v: boolean) { const s = load(); s.rawShape = v; save(s); }
 
 export async function mockJoin(playerId: string, nickname: string) {
   await delay();
@@ -267,6 +283,7 @@ function startRound(s: MockStore) {
   s.variant = "normal";
   s.cancelledAt = null;
   s.frozenElapsed = null;
+  s.gameOver = false;
   s.winner = Math.random() < 0.5 ? "A" : "B";
 }
 
@@ -350,7 +367,7 @@ export async function mockAdminReset() {
   for (const p of Object.values(players)) {
     p.tokens = START_TOKENS; p.bet = null; p.suggestion = null; p.delta = null; p.refunded = false; p.before = null; p.round = 0; p.settledRound = -1;
   }
-  save({ ...fresh(), players });
+  save({ ...fresh(), players, rawShape: s.rawShape });
   return { ok: true as const, detail: "Game reset: back to the lobby, everyone at 100 tokens" };
 }
 
@@ -358,7 +375,7 @@ export async function mockAdminReset() {
 
 export type MockPreset =
   | "lobby" | "reveal" | "reveal-noimg" | "betting" | "openings" | "debate-2" | "debate-5" | "debate-8"
-  | "judging" | "results-win" | "results-lose" | "results-nobet" | "incomplete" | "cancelled";
+  | "judging" | "results-win" | "results-lose" | "results-nobet" | "incomplete" | "cancelled" | "game-over";
 
 export const MOCK_PRESETS: { id: MockPreset; label: string }[] = [
   { id: "lobby", label: "Lobby" }, { id: "reveal", label: "Case reveal" },
@@ -367,6 +384,7 @@ export const MOCK_PRESETS: { id: MockPreset; label: string }[] = [
   { id: "debate-8", label: "Debate T8" }, { id: "judging", label: "Judging" }, { id: "results-win", label: "Results: win" },
   { id: "results-lose", label: "Results: lose" },
   { id: "results-nobet", label: "Results: no bet" }, { id: "incomplete", label: "Incomplete verdict" }, { id: "cancelled", label: "Cancelled" },
+  { id: "game-over", label: "Game over" },
 ];
 
 /** Players without a bet get one, so win/lose screens have something to show. */
@@ -387,9 +405,9 @@ function majoritySide(s: MockStore): Side {
 
 export function mockApplyPreset(preset: MockPreset, freeze: boolean) {
   let s = load();
-  if (preset === "lobby") {
+  if (preset === "lobby" || preset === "game-over") {
     const players = s.players;
-    s = { ...fresh(), roundNumber: s.roundNumber, players };
+    s = { ...fresh(), roundNumber: s.roundNumber, players, rawShape: s.rawShape, gameOver: preset === "game-over" };
     for (const p of Object.values(players)) { p.bet = null; p.suggestion = null; p.delta = null; p.refunded = false; }
     save(s);
     return;
@@ -402,7 +420,7 @@ export function mockApplyPreset(preset: MockPreset, freeze: boolean) {
   if (preset === "reveal") s.noImage = false;
   if (preset === "reveal-noimg") s.noImage = true;
   s.frozenElapsed = freeze ? 0 : null;
-  const at: Record<Exclude<MockPreset, "lobby">, number> = {
+  const at: Record<Exclude<MockPreset, "lobby" | "game-over">, number> = {
     reveal: 1, "reveal-noimg": 1, betting: T.betting + 0.5, openings: T.openings + 0.5, "debate-2": 43, "debate-5": 60, "debate-8": 77,
     judging: T.judging + 1, "results-win": T.results + 0.2, "results-lose": T.results + 0.2, "results-nobet": T.results + 0.2, incomplete: T.results + 0.2, cancelled: 50,
   };

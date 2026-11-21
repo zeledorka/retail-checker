@@ -17,7 +17,8 @@ export const MOCK_SCENARIO: Scenario = {
   interpretationB: "It's evidence of violence: real blood, and someone tried to clean it up.",
 };
 
-export const MOCK_IMAGE_URL: string | null = null; // the real backend may provide case.imageUrl
+/** Served from ai-courtroom/public/cases/. Use any path under public/ or a full https URL; null = no image. */
+export const MOCK_IMAGE_URL: string | null = "/cases/crimson-storeroom.svg";
 
 /** 10 public arguments: openings (seq 1-2) then 8 alternating debate turns (seq 3-10). Each <= 45 words. */
 export const MOCK_LINES: { side: Side; text: string }[] = [

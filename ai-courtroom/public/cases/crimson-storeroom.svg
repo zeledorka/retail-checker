@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" width="1600" height="900" role="img" aria-label="A locked storage room with Halloween decoration boxes, a mop and bucket, and a dark red stain on the floor">
+  <!-- Placeholder case art for mock mode ("The Crimson Storeroom"). Key content sits in the middle band
+       (y 250-650) because the case card crops the image to a wide strip. -->
+  <defs>
+    <linearGradient id="wall" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3b3446"/>
+      <stop offset="1" stop-color="#262131"/>
+    </linearGradient>
+    <linearGradient id="floor" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4a3f35"/>
+      <stop offset="1" stop-color="#2b241e"/>
+    </linearGradient>
+    <radialGradient id="lamp" cx="0.5" cy="0" r="0.75">
+      <stop offset="0" stop-color="#ffd27a" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#ffd27a" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="stain" cx="0.45" cy="0.5" r="0.55">
+      <stop offset="0" stop-color="#5c0010"/>
+      <stop offset="0.6" stop-color="#8a0a1f"/>
+      <stop offset="1" stop-color="#a3132b" stop-opacity="0.85"/>
+    </radialGradient>
+  </defs>
+
+  <!-- room -->
+  <rect width="1600" height="900" fill="url(#wall)"/>
+  <rect y="560" width="1600" height="340" fill="url(#floor)"/>
+  <rect y="552" width="1600" height="12" fill="#1c1822"/>
+  <g stroke="#3a3129" stroke-width="3" opacity="0.6">
+    <line x1="0" y1="640" x2="1600" y2="640"/><line x1="0" y1="740" x2="1600" y2="740"/>
+    <line x1="300" y1="560" x2="180" y2="900"/><line x1="800" y1="560" x2="800" y2="900"/><line x1="1300" y1="560" x2="1420" y2="900"/>
+  </g>
+
+  <!-- locked door (left) -->
+  <rect x="110" y="170" width="250" height="390" rx="8" fill="#5a4636"/>
+  <rect x="130" y="190" width="210" height="160" rx="6" fill="#4b3a2d"/>
+  <rect x="130" y="370" width="210" height="170" rx="6" fill="#4b3a2d"/>
+  <circle cx="330" cy="380" r="12" fill="#d9b44a"/>
+  <g transform="translate(300 400)">
+    <path d="M-16 0 v-14 a16 16 0 0 1 32 0 v14" fill="none" stroke="#d9b44a" stroke-width="7"/>
+    <rect x="-24" y="0" width="48" height="38" rx="6" fill="#d9b44a"/>
+    <circle cx="0" cy="17" r="5" fill="#5a4636"/>
+  </g>
+
+  <!-- shelves with Halloween boxes (right) -->
+  <g>
+    <rect x="1080" y="200" width="420" height="16" fill="#6b5442"/>
+    <rect x="1080" y="370" width="420" height="16" fill="#6b5442"/>
+    <rect x="1090" y="200" width="14" height="360" fill="#5a4636"/>
+    <rect x="1476" y="200" width="14" height="360" fill="#5a4636"/>
+    <rect x="1110" y="110" width="150" height="90" rx="6" fill="#b8854f"/>
+    <text x="1185" y="168" font-family="Arial, sans-serif" font-size="30" font-weight="700" fill="#5a3b1c" text-anchor="middle">HALLOWEEN</text>
+    <rect x="1290" y="130" width="180" height="70" rx="6" fill="#a87443"/>
+    <!-- pumpkin -->
+    <g transform="translate(1180 320)">
+      <ellipse cx="0" cy="0" rx="58" ry="46" fill="#f07c1b"/>
+      <ellipse cx="-22" cy="0" rx="20" ry="44" fill="#e06c10"/>
+      <ellipse cx="22" cy="0" rx="20" ry="44" fill="#e06c10"/>
+      <rect x="-6" y="-60" width="12" height="20" rx="3" fill="#4f7a28"/>
+      <path d="M-30 -8 l12 -14 l12 14 z M6 -8 l12 -14 l12 14 z" fill="#3a1d05"/>
+      <path d="M-30 14 q30 22 60 0 q-30 10 -60 0 z" fill="#3a1d05"/>
+    </g>
+    <!-- open box with a tipped-over bottle -->
+    <rect x="1300" y="290" width="170" height="80" rx="6" fill="#b8854f"/>
+    <path d="M1300 290 l-30 -30 h170 l30 30 z" fill="#c9965d"/>
+    <rect x="1350" y="250" width="34" height="70" rx="8" fill="#e8e1d6" transform="rotate(-38 1367 285)"/>
+    <text x="1385" y="345" font-family="Arial, sans-serif" font-size="22" font-weight="700" fill="#5a3b1c" text-anchor="middle">FAKE BLOOD?</text>
+  </g>
+
+  <!-- mop and bucket -->
+  <g transform="translate(470 330)">
+    <rect x="80" y="-120" width="12" height="330" rx="5" fill="#c9b79c" transform="rotate(12 86 45)"/>
+    <path d="M60 200 q30 40 70 0 l10 30 q-45 25 -90 0 z" fill="#d8d3c4"/>
+    <path d="M0 140 h120 l-14 120 h-92 z" fill="#3d7fc1"/>
+    <rect x="-6" y="132" width="132" height="14" rx="5" fill="#2f6aa6"/>
+    <path d="M10 140 q50 -60 100 0" fill="none" stroke="#9aa3ad" stroke-width="5"/>
+    <path d="M20 160 q40 8 80 0" fill="none" stroke="#7ab0e3" stroke-width="5" opacity="0.7"/>
+  </g>
+
+  <!-- the stain (centre) -->
+  <path d="M720 640 c-70 -10 -120 30 -100 70 c20 40 110 55 190 45 c90 -10 170 -30 165 -75 c-5 -40 -90 -55 -150 -50 c-40 3 -60 15 -105 10 z" fill="url(#stain)"/>
+  <ellipse cx="930" cy="720" rx="34" ry="14" fill="#8a0a1f"/>
+  <ellipse cx="600" cy="700" rx="18" ry="8" fill="#8a0a1f"/>
+  <ellipse cx="985" cy="675" rx="12" ry="6" fill="#8a0a1f"/>
+  <path d="M760 650 q40 -10 90 2" stroke="#ff6b81" stroke-width="5" fill="none" opacity="0.5"/>
+  <!-- smeared mop streaks leading away -->
+  <g stroke="#7a0a1c" stroke-width="10" stroke-linecap="round" opacity="0.55" fill="none">
+    <path d="M630 690 q-40 -10 -60 -45"/>
+    <path d="M650 705 q-55 -5 -85 -40"/>
+  </g>
+
+  <!-- evidence marker -->
+  <g transform="translate(870 600)">
+    <path d="M0 0 l34 0 l10 40 l-54 0 z" fill="#ffc531"/>
+    <text x="12" y="31" font-family="Arial, sans-serif" font-size="24" font-weight="900" fill="#1f1418" text-anchor="middle">1</text>
+  </g>
+
+  <!-- ceiling lamp light -->
+  <rect width="1600" height="900" fill="url(#lamp)"/>
+  <rect x="770" y="0" width="60" height="40" fill="#1c1822"/>
+  <ellipse cx="800" cy="44" rx="70" ry="16" fill="#ffd27a" opacity="0.9"/>
+</svg>

@@ -17,8 +17,11 @@ import { HostDock, UnlockDialog } from "@/components/HostDock";
 import { JoinQr, useJoinUrl } from "@/components/JoinQr";
 
 const IDLE_MS = 3000;
-/** Length of the projector's "Judge Verdict" screen before it moves on to "Winner and Leaderboard". */
+/** MAXIMUM length of the projector's "Judge Verdict" screen before it moves on to "Winner and Leaderboard". */
 const VERDICT_SCREEN_SECONDS = 15; // not exported: Next.js page files may only export the page + route config
+/** When the server's results phase has a known length, the verdict screen takes at most this share of it,
+ *  so the leaderboard still appears before the server (or autopilot) moves on. 10s RESULTS -> 6s verdict. */
+const VERDICT_SHARE_OF_RESULTS = 0.6;
 
 type ResultsStage = {
   /** null outside a results phase that has a verdict. "pending" = not mounted yet (clock/storage unread): neutral screen. */
@@ -29,7 +32,8 @@ type ResultsStage = {
 };
 
 /**
- * Splits the server's results phase into two client-side sub-screens. The 15s is measured from the SERVER's results
+ * Splits the server's results phase into two client-side sub-screens. The verdict screen lasts min(15s, 60% of the
+ * server's results phase when its length is known). It is measured from the SERVER's results
  * phase start (round.phaseStartedAt) + the measured clock offset, so a refresh resumes at the right point; if that is
  * past 15s the leaderboard shows straight away. Never moves on from the leaderboard by itself: only a new server
  * phase does. "Skip" is client-side only, remembered per round id for this tab.
@@ -61,7 +65,13 @@ function useResultsStage(state: UiGameState | null, offset: number): ResultsStag
   }, [inResults, roundId, serverStart]);
 
   const verdictStart = serverStart ?? fallbackStart;
-  const verdictEndsAt = verdictStart !== null ? verdictStart + VERDICT_SCREEN_SECONDS * 1000 : null;
+  // Respect the server's clock: if the results phase has a start + end (server timestamps, no clock read here), the
+  // verdict screen is min(15s, 60% of the phase). Without a deadline (e.g. mock results) it is the full 15s. If the
+  // server leaves RESULTS mid-screen, the projector simply follows the new phase.
+  const resultsEnd = inResults ? r?.phaseEndsAt ?? null : null;
+  const resultsMs = serverStart !== null && resultsEnd !== null && resultsEnd > serverStart ? resultsEnd - serverStart : null;
+  const verdictMs = Math.min(VERDICT_SCREEN_SECONDS * 1000, resultsMs !== null ? resultsMs * VERDICT_SHARE_OF_RESULTS : Infinity);
+  const verdictEndsAt = verdictStart !== null ? verdictStart + verdictMs : null;
   const { expired, isReady } = useCountdown(verdictEndsAt, offset);
   const skip = useCallback(() => {
     if (roundId) sessionStorage.setItem(`aic:verdict-skip:${roundId}`, "1");

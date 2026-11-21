@@ -219,12 +219,14 @@ function Stage({ state, joinUrl, joinFull, results }: { state: UiGameState; join
       return <div className="mx-auto h-full max-w-5xl"><Podium entries={state.leaderboard} big maxRest={4} /></div>;
     case "reveal":
       return c && (
-        <div className="grid h-full grid-cols-[3fr_2fr] gap-8">
-          <CaseCard c={c} big className="overflow-hidden" />
-          <div className="flex flex-col justify-center gap-6">
-            <PositionCard side="A" text={c.positionA} big delay={400} />
-            <p className="text-center text-5xl font-black">VS</p>
-            <PositionCard side="B" text={c.positionB} big delay={700} />
+        // Title, description, all evidence (2 columns) and both positions on one 1920x1080 screen: vh/clamp sizing,
+        // slim image area, no overflow clipping (if a case is unusually long, the section scrolls instead of cutting).
+        <div className="grid min-h-full grid-cols-[3fr_2fr] items-center gap-[2.5vw]">
+          <CaseCard c={c} big showTitle />
+          <div className="flex flex-col justify-center gap-[2vh]">
+            <PositionCard side="A" text={c.positionA} big fit delay={400} />
+            <p className="text-center text-[clamp(1.5rem,2.2vw,2.8rem)] font-black leading-none">VS</p>
+            <PositionCard side="B" text={c.positionB} big fit delay={700} />
           </div>
         </div>
       );

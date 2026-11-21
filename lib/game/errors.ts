@@ -36,3 +36,33 @@ export function fromDbError(e: { code?: string; message: string }) {
   console.error('[db error]', e);
   return fail('INTERNAL', 500, 'Something went wrong');
 }
+
+/**
+ * A custom error type for "expected" game-rule failures (not bugs).
+ *
+ * `class X extends Error` = make a new kind of Error that has extra fields.
+ *  This `new GameError('AI_NOT_DONE')` gives an object with .code = 'AI_NOT_DONE', .status = 409.
+ */
+export class GameError extends Error {
+  constructor(public code: ErrorCode, public status = 409, message: string = code) {
+    super(message); // `super(...)` calls the parent (Error) constructor, which sets .message
+  }
+}
+
+/**
+ * Convert ANY thrown thing into an HTTP response. Routes use this in their catch blocks.
+ * `unknown` is the safe "could be anything" type: TS forces you to check before using it.
+ */
+export function toErrorResponse(e: unknown) {
+  // check if this error is a GameError instance
+  if (e instanceof GameError) return fail(e.code, e.status, e.message);
+
+  // Supabase errors are plain objects with a `message` property.
+  // `'message' in e` checks the property exists, so TS lets us treat it as one.
+  if (typeof e === 'object' && e !== null && 'message' in e) {
+    return fromDbError(e as { code?: string; message: string });
+  }
+
+  console.error('[unexpected]', e);
+  return fail('INTERNAL', 500);
+}

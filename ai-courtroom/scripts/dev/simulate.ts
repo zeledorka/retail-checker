@@ -147,6 +147,9 @@ async function main() {
 
   const start = await call('POST', '/api/admin/start', { admin: true });
   check('start round 1 → REVEAL', start.status === 200 && start.body?.phase === 'REVEAL', start.body);
+  // start turns server-side autopilot on; this mode drives the game with explicit ticks, so switch it off (otherwise
+  // our own state polls advance the round, e.g. JUDGING → RESULTS before the JUDGING checks run).
+  await call('POST', '/api/admin/autopilot', { admin: true, body: { enabled: false } });
 
   // ================= ROUND 1: the detailed round =================
   await tickUntil(at(1, ['BETTING']), 'BETTING r1');
@@ -184,8 +187,9 @@ async function main() {
   bets.push({ p: dave, side: daveSide, stake: 100 }, { p: erin, side: erinSide, stake: 100 });
   for (const b of bets) expected[b.p.id] -= b.stake;
 
-  const early = await call('POST', '/api/inject', { token: alice.token, body: { roundId, text: 'too early' } });
-  check('inject during BETTING → INJECTION_CLOSED', errCode(early) === 'INJECTION_CLOSED', early.body);
+  // Clues open as soon as the player has bet (BETTING), through DEBATE.
+  const clue = await call('POST', '/api/inject', { token: alice.token, body: { roundId, text: CLUE } });
+  check('alice submits a clue during BETTING (after her bet)', clue.status === 200 && clue.body?.accepted === true, clue.body);
 
   // ---------- OPENINGS: clue window ----------
   await tickUntil(at(1, ['OPENINGS', 'DEBATE']), 'OPENINGS r1');
@@ -197,8 +201,6 @@ async function main() {
   check('inject with no bet → NO_BET', noBet.status === 409 && errCode(noBet) === 'NO_BET', noBet.body);
   const tooLong = await call('POST', '/api/inject', { token: alice.token, body: { roundId, text: 'x'.repeat(201) } });
   check('inject 201 chars → BAD_REQUEST', tooLong.status === 400 && errCode(tooLong) === 'BAD_REQUEST', tooLong.body);
-  const clue = await call('POST', '/api/inject', { token: alice.token, body: { roundId, text: CLUE } });
-  check('alice submits a clue', clue.status === 200 && clue.body?.accepted === true, clue.body);
   const bobClue = await call('POST', '/api/inject', { token: bob.token, body: { roundId, text: BOB_CLUE } });
   check('bob submits a clue (side B)', bobClue.status === 200 && bobClue.body?.accepted === true, bobClue.body);
   const clue2 = await call('POST', '/api/inject', { token: alice.token, body: { roundId, text: 'second clue' } });
@@ -215,10 +217,22 @@ async function main() {
   } else {
     check('mid-DEBATE fresh GET /api/state restores me.bet + me.injection', false, `DEBATE not observed (jumped to ${inDebate.round.phase})`);
   }
+  // A clue sent mid-DEBATE (after at least one turn) must still reach a later turn.
+  await tickUntil((s) => s?.round?.phase !== 'DEBATE' || s.round.turnsCompleted >= 2, 'DEBATE turn 2');
+  const daveClue = await call('POST', '/api/inject', { token: dave.token, body: { roundId, text: 'The timestamp on the receipt is an hour off.' } });
+  check('dave submits a clue mid-DEBATE', daveClue.status === 200, daveClue.body);
 
   // ---------- JUDGING ----------
   const judging = await tickUntil(at(1, ['JUDGING', 'RESULTS', 'CANCELLED']), 'JUDGING r1');
   check('round reached JUDGING (not skipped)', judging.round.phase === 'JUDGING', judging.round.phase);
+  // Every clue (BETTING, OPENINGS, mid-DEBATE) was handed to the AI on a later turn: its id is in the stored AI state.
+  {
+    const { data: ai } = await db.from('ai_round_states').select('state').eq('round_id', roundId).single();
+    const json = JSON.stringify(ai?.state ?? {});
+    const ids = { betting: clue.body?.injectionId, openings: bobClue.body?.injectionId, debate: daveClue.body?.injectionId };
+    check('clues from BETTING, OPENINGS and mid-DEBATE all reached the AI state', Object.values(ids).every((id) => id && json.includes(id)),
+      Object.fromEntries(Object.entries(ids).map(([k, id]) => [k, !!id && json.includes(id)])));
+  }
   if (judging.round.phase === 'JUDGING') {
     const late = await call('POST', '/api/inject', { token: bob.token, body: { roundId, text: 'too late' } });
     check('inject after its window (JUDGING) → INJECTION_CLOSED', late.status === 409 && errCode(late) === 'INJECTION_CLOSED', late.body);

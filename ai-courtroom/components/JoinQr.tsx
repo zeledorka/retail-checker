@@ -16,7 +16,7 @@ export function useJoinUrl() {
 }
 
 /** Drawn as React SVG rects (no innerHTML). Error correction "M" keeps it scannable from the back of a room. */
-export function JoinQr({ url, size = 300, className = "" }: { url: string | null; size?: number; className?: string }) {
+export function JoinQr({ url, size = 300, className = "" }: { url: string | null; size?: number | string; className?: string }) {
   const [cells, setCells] = useState<{ n: number; dark: [number, number][] } | null>(null);
   useEffect(() => {
     if (!url) return;
@@ -29,16 +29,17 @@ export function JoinQr({ url, size = 300, className = "" }: { url: string | null
     setCells({ n, dark });
   }, [url]);
 
+  const dim = typeof size === "number" ? `${size}px` : size; // px number, or any CSS length (rem on the projector)
   const quiet = 2; // white border in modules (the card adds more padding)
   return (
-    <div className={`card animate-pop grid place-items-center p-4 ${className}`} style={{ width: size + 32 }}>
+    <div className={`card animate-pop grid place-items-center p-4 ${className}`} style={{ width: `calc(${dim} + 2rem)` }}>
       {cells ? (
-        <svg viewBox={`0 0 ${cells.n + quiet * 2} ${cells.n + quiet * 2}`} width={size} height={size} role="img" aria-label={`QR code to join: ${url}`} shapeRendering="crispEdges">
+        <svg viewBox={`0 0 ${cells.n + quiet * 2} ${cells.n + quiet * 2}`} style={{ width: dim, height: dim }} role="img" aria-label={`QR code to join: ${url}`} shapeRendering="crispEdges">
           <rect width="100%" height="100%" fill="#ffffff" />
           {cells.dark.map(([r, c]) => <rect key={`${r}-${c}`} x={c + quiet} y={r + quiet} width="1" height="1" fill="#1f1418" />)}
         </svg>
       ) : (
-        <div style={{ width: size, height: size }} className="animate-pulse rounded-xl bg-gray-200" />
+        <div style={{ width: dim, height: dim }} className="animate-pulse rounded-xl bg-gray-200" />
       )}
       <p className="mt-2 text-xl font-black text-court">📱 Scan to join</p>
     </div>

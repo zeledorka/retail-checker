@@ -144,6 +144,10 @@ function Game({ state, offset, refetch }: { state: UiGameState; offset: number; 
             <PhaseBanner phase="betting" sub={state.case.title} />
             <BetPanel tokens={me.tokens} bet={me.bet} open={!!r?.bettingOpen && !expired}
               positions={{ A: state.case.positionA, B: state.case.positionB }} onBet={onBet} />
+            {/* Clue box appears as soon as the player has bet (server accepts clues from BETTING through DEBATE). */}
+            {me.bet && r && (
+              <SuggestionBox betSide={me.bet.side} open={r.suggestionsOpen && !expired} sent={me.suggestion} onSend={onSend} />
+            )}
           </>
         )}
 
@@ -155,7 +159,7 @@ function Game({ state, offset, refetch }: { state: UiGameState; offset: number; 
             </div>
             <MyBetStrip state={state} />
             <Transcript items={state.transcript} thinking={r.nextSpeaker} className="max-h-[45vh] rounded-2xl bg-black/15 p-3" />
-            {/* Clues are accepted during OPENINGS and DEBATE until the phase deadline (server rule), one per round. */}
+            {/* Clues are accepted from BETTING (after the bet) through DEBATE until the phase deadline (server rule), one per round. */}
             <SuggestionBox betSide={me.bet?.side ?? null} open={r.suggestionsOpen && !expired} sent={me.suggestion} onSend={onSend} />
           </>
         )}

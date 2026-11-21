@@ -153,8 +153,8 @@ export function adaptState(b: StateResponse, checkDrift = !USE_MOCK): UiGameStat
       phaseStartedAt: Date.parse(r.phaseStartedAt) || null, phaseEndsAt: Date.parse(r.phaseEndsAt) || null,
       aiStatus, turnsCompleted, maxTurns, nextSpeaker,
       bettingOpen: r.phase === "BETTING",
-      // Clues are accepted during OPENINGS and DEBATE (types/game.ts), one per player per round.
-      suggestionsOpen: r.phase === "OPENINGS" || r.phase === "DEBATE",
+      // Clues are accepted during BETTING (after the bet), OPENINGS and DEBATE, one per player per round.
+      suggestionsOpen: r.phase === "BETTING" || r.phase === "OPENINGS" || r.phase === "DEBATE",
       betTotals: r.betTotals ?? null,
     },
     phase,

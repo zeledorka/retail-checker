@@ -36,14 +36,17 @@ export const NEXT: Partial<Record<Phase, Phase>> = {
   JUDGING: 'RESULTS',
 };
 
-// Phase length in seconds. For AI phases this is a BUDGET, not a promise:
-//  - OPENINGS: minimum time on screen (also the first window for audience clues). Never left before both openings exist.
-//  - DEBATE:   the AI budget for the 8 turns (~30s measured live). When it runs out we stop asking for turns and judge
-//              whatever exists (the judge supports partial debates).
-//  - JUDGING:  the judge call (~6s measured; the judge's own timeout is 40s).
+// Phase length in seconds. Audience clues are accepted during BETTING (once the player has bet), OPENINGS and DEBATE.
+//  - OPENINGS: minimum time on screen. Never left before both openings exist.
+//  - DEBATE:   fixed length: runs to its deadline even when all 8 turns finish early (time to read + send clues).
+//              8 turns x (~2.3s live + MIN_TURN_GAP_MS) ≈ 65s fits. If time runs out, the judge rules on what exists.
+//  - JUDGING:  a budget, not a wait: moves on as soon as the verdict is stored (~7s live; judge timeout 40s).
+// Round ≈ 8 + 20 + 12 + 75 + judge (~7s) + 25 ≈ 147s.
 export const SECONDS: Record<Phase, number> = {
-  REVEAL: 8, BETTING: 15, OPENINGS: 12, DEBATE: 60, JUDGING: 45, RESULTS: 10, CANCELLED: 8,
+  REVEAL: 8, BETTING: 20, OPENINGS: 12, DEBATE: 75, JUDGING: 45, RESULTS: 25, CANCELLED: 8,
 };
+/** Minimum time between two public debate messages, so the audience can read and clues land in later turns. */
+export const MIN_TURN_GAP_MS = 6_000;
 
 export { MAX_TURNS };
 export const AI_PHASES: readonly Phase[] = ['OPENINGS', 'DEBATE', 'JUDGING'];
@@ -215,8 +218,9 @@ export async function tick(): Promise<TickResponse> {
     return deadlinePassed ? advance(round.phase) : { changed: false, phase: round.phase };
   }
 
-  // DEBATE: out of time → stop requesting turns and move to the judge (partial debate). All turns done → move on now.
-  if (round.phase === 'DEBATE' && (deadlinePassed || round.ai_step_status === 'done')) return advance('DEBATE');
+  // DEBATE always runs to its deadline (all 8 turns done early → wait), then the judge (partial debate if time ran out).
+  if (round.phase === 'DEBATE' && deadlinePassed) return advance('DEBATE');
+  if (round.phase === 'DEBATE' && round.ai_step_status === 'done') return { changed: false, phase: round.phase };
   // OPENINGS waits for its minimum on-screen time; JUDGING moves on as soon as the verdict is stored.
   if (round.ai_step_status === 'done') {
     return round.phase === 'JUDGING' || deadlinePassed ? advance(round.phase) : { changed: false, phase: round.phase };
@@ -273,6 +277,14 @@ export async function runAiStep(roundId: string, phase: Phase): Promise<RunAiRes
       return { status: 'failed', error: loaded.error.message };
     }
     const state = loaded.state;
+
+    // Pacing: no new debate turn until MIN_TURN_GAP_MS after the previous public message (checked while holding the
+    // lease, so two overlapping requests can't both pass it). Clues sent meanwhile are included in that next turn.
+    if (phase === 'DEBATE' && turnsOf(state) < state.maxTurns) {
+      const { data: last } = await db.from('debate_messages').select('created_at').eq('round_id', roundId)
+        .order('ordinal', { ascending: false }).limit(1).maybeSingle();
+      if (last && Date.now() - Date.parse(last.created_at) < MIN_TURN_GAP_MS) return { status: 'skipped' };
+    }
 
     // Tell clients "Agents thinking…" while the model call runs.
     await db.from('rounds').update({ ai_step_status: 'running' }).eq('id', roundId).eq('phase', phase);
@@ -428,7 +440,8 @@ export async function setAutopilot(enabled: boolean): Promise<boolean> {
 /**
  * Should a GET /api/state poll kick off a tick()? Uses only the state already built for the response (no queries).
  * True when the phase deadline has passed, or when an AI phase still has a model call to make and none is in flight
- * (without this, DEBATE turns and the judge would only run after the deadline). OPENINGS done = wait for the clock.
+ * (without this, DEBATE turns and the judge would only run after the deadline). OPENINGS/DEBATE done = wait for the
+ * clock; a DEBATE turn is not due until MIN_TURN_GAP_MS after the last public message.
  * Extra ticks are harmless: tick() re-reads the round and the lease/compare-and-set make overlapping calls no-ops.
  */
 export function autopilotDue(state: StateResponse, now = Date.now()): boolean {
@@ -436,5 +449,10 @@ export function autopilotDue(state: StateResponse, now = Date.now()): boolean {
   if (!state.game.autopilot || state.game.status !== 'IN_PROGRESS' || !r) return false;
   if (now >= Date.parse(r.phaseEndsAt)) return true;
   if (!isAiPhase(r.phase) || r.aiStepStatus === 'running') return false;
-  return !(r.phase === 'OPENINGS' && r.aiStepStatus === 'done');
+  if (r.aiStepStatus === 'done') return r.phase === 'JUDGING';      // OPENINGS/DEBATE done: wait for the clock
+  if (r.phase === 'DEBATE') {                                         // turn gap: skip the tick (and its queries) early
+    const last = state.publicMessages.at(-1);
+    if (last && now - Date.parse(last.createdAt) < MIN_TURN_GAP_MS) return false;
+  }
+  return true;
 }

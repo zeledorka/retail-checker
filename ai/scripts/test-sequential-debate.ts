@@ -132,7 +132,7 @@ for (let idx = 1; idx <= MAX_TURNS; idx++) {
     break;
   }
   const a = res.argument;
-  a.injectionIdsUsed.forEach((id) => consumed.add(id));
+  res.audience.processedIds.forEach((id) => consumed.add(id));
   transcript.push({ stage: a.stage, side: a.side, text: a.text, turn: a.turn });
   turnLatencies.push(a.meta.latencyMs);
   turnsDone++;

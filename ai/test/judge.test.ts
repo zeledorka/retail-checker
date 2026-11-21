@@ -1,12 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createDebateEngine } from "../src/debate";
-import { config, scenario, fullTranscript, mockGenerate } from "./fixtures";
+import { config, scenario, fullTranscript, mockGenerate, verdictJson } from "./fixtures";
 
-const verdict = JSON.stringify({
-  winner: "A", explanation: "A tied crumbs to Dave.",
-  scores: { A: { evidence: 8, logic: 7, rebuttal: 7, persuasion: 8 }, B: { evidence: 6, logic: 6, rebuttal: 5, persuasion: 6 } },
-});
+const verdict = verdictJson();
 
 test("judge returns validated verdict using the judge model", async () => {
   const m = mockGenerate(() => verdict);

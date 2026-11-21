@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createDebateEngine } from "../src/debate";
 import type { AudienceInjection, Side, TranscriptEntry } from "../src/types";
-import { config, scenario, mockGenerate, fullTranscript } from "./fixtures";
+import { config, scenario, mockGenerate, fullTranscript, verdictJson } from "./fixtures";
 
 const turnEntry = (turn: number, side: Side, text: string): TranscriptEntry => ({ stage: "turn", side, text, turn });
 const inj = (id: string, side: Side, text: string, t: number, playerId = id): AudienceInjection => ({ id, side, text, submittedAt: t, playerId });
@@ -79,15 +79,18 @@ test("snapshot semantics: a submission added while the request is running is not
   assert.doesNotMatch(last(m).prompt, /too late tip/);
 });
 
-test("200 pending injections: selection and prompt size stay bounded", async () => {
+test("200 pending injections: as many as fit the character budget are sent, the rest are queued and reported", async () => {
   const many = Array.from({ length: 200 }, (_, k) => inj(`s${k}`, "A", `suggestion number ${k} `.repeat(30), k));
   const m = mockGenerate();
   const base = await engineWith(m, wide).generateNextTurn({ roundId: "r", speaker: "A", scenario });
   const flood = await engineWith(m, wide).generateNextTurn({ roundId: "r", speaker: "A", scenario, injections: many });
   assert.ok(base.ok && flood.ok);
-  assert.equal(flood.argument.injectionIdsUsed.length, 3);
+  const { stats } = flood.audience;
+  assert.ok(stats.included >= 40 && stats.included <= 50, `included ${stats.included}`); // 10000-char budget / ~201 chars each
+  assert.equal(stats.included + stats.queued, 200);
+  assert.equal(flood.audience.queuedIds.length, stats.queued);
   const grew = m.calls[1].req.prompt.length - m.calls[0].req.prompt.length;
-  assert.ok(grew < 3 * (200 + 10) + 300, `prompt grew by ${grew}`);
+  assert.ok(grew < 10_000 + 1_000, `prompt grew by ${grew}`);
 });
 
 test("agent isolation: opposing agent's injections never appear, in either direction", async () => {
@@ -154,7 +157,7 @@ test("backwards compatibility: fixed-stage APIs ignore sequential entries; judge
   assert.ok(r.ok);
   for (const c of m.calls) assert.doesNotMatch(c.req.prompt, /TURN-ONLY/);
 
-  const verdict = JSON.stringify({ winner: "B", explanation: "ok", scores: { A: { evidence: 5, logic: 5, rebuttal: 5, persuasion: 5 }, B: { evidence: 6, logic: 6, rebuttal: 6, persuasion: 6 } } });
+  const verdict = verdictJson({ winner: "B", explanation: "ok", scores: { A: { evidence: 5, logic: 5, rebuttal: 5, persuasion: 5 }, B: { evidence: 6, logic: 6, rebuttal: 6, persuasion: 6 } } });
   const jm = mockGenerate(() => verdict);
   const v = await engineWith(jm).judgeDebate({ roundId: "r", scenario, transcript: [...stray, turnEntry(3, "A", "three")] });
   assert.ok(v.ok && v.verdict.winner === "B");

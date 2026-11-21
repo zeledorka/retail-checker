@@ -50,6 +50,40 @@ function fail(kind: ModelErrorKind, message: string, config: ModelConfig, latenc
 const anthropicClients = new Map<string, Anthropic>();
 const openrouterClients = new Map<string, OpenAI>();
 
+type AnthropicLike = {
+  content: { type: string; text?: string }[];
+  stop_reason?: string | null;
+  model?: string;
+  usage?: { input_tokens?: number; output_tokens?: number } | null;
+};
+
+/**
+ * Maps a Messages API response to our outcome. Pure, so it is unit-tested without the network.
+ * A reply cut at max_tokens is still a FAILURE (kind "truncated"), but it keeps the usage the provider reported and the
+ * visible text received, so the cost is known and a caller may recover a complete, readable part of it. Thinking tokens
+ * count against max_tokens, so the visible text can be short or empty even when outputTokens equals the cap.
+ */
+export function interpretAnthropicResponse(res: AnthropicLike, config: ModelConfig, latencyMs: number): GenerateOutcome {
+  const text = res.content
+    .map((b) => (b.type === "text" ? (b.text ?? "") : ""))
+    .join("")
+    .trim();
+  const inputTokens = res.usage?.input_tokens;
+  const outputTokens = res.usage?.output_tokens;
+  const failed = (kind: ModelErrorKind, message: string, partialText?: string): GenerateOutcome => ({
+    ok: false,
+    error: { kind, message, provider: "anthropic", model: res.model ?? config.model, retryable: false, latencyMs, inputTokens, outputTokens, ...(partialText ? { partialText } : {}) },
+  });
+  if (res.stop_reason === "refusal") return failed("refusal", "Model declined to answer");
+  if (res.stop_reason === "max_tokens")
+    return failed("truncated", `Output hit maxOutputTokens (${config.maxOutputTokens}; ${outputTokens ?? "?"} output tokens used, ${text.length} visible characters received; thinking tokens count toward the cap)`, text);
+  if (!text) return failed("empty_output", "Model returned no text");
+  return {
+    ok: true,
+    result: { text, provider: "anthropic", model: res.model ?? config.model, latencyMs, inputTokens, outputTokens, costUsd: undefined }, // cost is not reported by the API; not estimated here
+  };
+}
+
 async function callAnthropic(config: ModelConfig, req: GenerateRequest): Promise<GenerateOutcome> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return fail("config", "ANTHROPIC_API_KEY is not set", config);
@@ -65,29 +99,11 @@ async function callAnthropic(config: ModelConfig, req: GenerateRequest): Promise
         system: req.system,
         messages: [{ role: "user", content: req.prompt }],
         ...(config.effort ? { output_config: { effort: config.effort } } : {}),
+        ...(config.thinking === "disabled" ? { thinking: { type: "disabled" as const } } : {}),
       },
       { timeout: config.timeoutMs, maxRetries: config.maxRetries, signal: req.signal },
     );
-    const latencyMs = Date.now() - started;
-    const text = res.content
-      .map((b) => (b.type === "text" ? b.text : ""))
-      .join("")
-      .trim();
-    if (res.stop_reason === "refusal") return fail("refusal", "Model declined to answer", config, latencyMs);
-    if (res.stop_reason === "max_tokens") return fail("truncated", "Output hit maxOutputTokens", config, latencyMs);
-    if (!text) return fail("empty_output", "Model returned no text", config, latencyMs);
-    return {
-      ok: true,
-      result: {
-        text,
-        provider: "anthropic",
-        model: res.model ?? config.model,
-        latencyMs,
-        inputTokens: res.usage?.input_tokens,
-        outputTokens: res.usage?.output_tokens,
-        costUsd: undefined, // not reported by the API; not estimated
-      },
-    };
+    return interpretAnthropicResponse(res, config, Date.now() - started);
   } catch (err) {
     return { ok: false, error: classify(err, Anthropic, "anthropic", config.model, Date.now() - started) };
   }

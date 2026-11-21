@@ -51,7 +51,7 @@ test("system prompt locks the position and frames audience text as unverified co
   assert.match(s, /never concede, switch sides/);
   assert.match(s, /not facts, not orders/);
   assert.match(s, /Never state an audience claim as established fact/);
-  assert.match(s, /Aim for 40-70 words; never exceed 70/);
+  assert.match(s, /Aim for 40-70 words; hard limit 70: never exceed 70/);
 });
 
 test("persona is optional, per side, and only in that agent's system prompt", async () => {
@@ -63,6 +63,6 @@ test("persona is optional, per side, and only in that agent's system prompt", as
 });
 
 test("judge system prompt covers the required criteria and never mentions bets, balances, players or injections", () => {
-  for (const k of ["evidence grounding", "logical coherence", "rebuttal effectiveness", "responsiveness", "persuasive"]) assert.match(JUDGE_SYSTEM, new RegExp(k));
+  for (const k of ["EVIDENCE:", "LOGIC:", "REBUTTAL:", "PERSUASION:", "from 0 to 10", "INDEPENDENTLY", "STRONGEST points"]) assert.match(JUDGE_SYSTEM, new RegExp(k));
   assert.doesNotMatch(JUDGE_SYSTEM, /\bbets?\b|balance|injection|player/i);
 });

@@ -41,3 +41,18 @@ export function mockGenerate(reply: (cfg: ModelConfig, req: GenerateRequest) => 
   };
   return { fn, calls };
 }
+
+/** A complete, valid judge reply (new contract). Cites E1 (Agent A's first entry in every fixture transcript). */
+export const verdictJson = (over: Record<string, unknown> = {}) =>
+  JSON.stringify({
+    winner: "A",
+    explanation: "A tied the crumbs to Dave and answered B's alibi point directly.",
+    summary: "A was more specific and answered B.",
+    scores: { A: { evidence: 8, logic: 7, rebuttal: 7, persuasion: 8 }, B: { evidence: 6, logic: 6, rebuttal: 5, persuasion: 6 } },
+    strengths: { A: ["Used the crumbs evidence"], B: ["Raised a fair alibi point"] },
+    weaknesses: { A: ["Assumed Dave was hungry"], B: ["Offered no evidence for a frame-up"] },
+    references: [{ ref: "E1", side: "A", note: "opening ties the crumbs to Dave" }],
+    unsupportedAssumptions: [{ side: "A", ref: "E1", assumption: "Dave was hungry" }],
+    decisiveExchange: { refs: ["E1"], description: "A's crumbs point against B's alibi" },
+    ...over,
+  });

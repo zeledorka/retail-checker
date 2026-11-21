@@ -89,7 +89,7 @@ function Courtroom({ state, offset, joinUrl }: { state: UiGameState | null; offs
         </div>
       </header>
 
-      <section key={state.phase} className="mt-6 min-h-0 flex-1">
+      <section key={state.phase} className="mt-6 min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <Stage state={state} joinUrl={joinUrl} />
       </section>
     </div>
@@ -177,7 +177,7 @@ function Stage({ state, joinUrl }: { state: UiGameState; joinUrl: string }) {
             <ScoreBars v={v} big />
             <div className="card min-h-0 overflow-hidden p-6 text-2xl font-bold">
               <p className="text-lg font-black uppercase tracking-widest text-court">Judge&apos;s reasoning</p>
-              <p className="mt-1 line-clamp-5">{v.explanation}</p>
+              <p className="mt-1">{v.explanation}</p>
             </div>
           </div>
           <div className="animate-slide-up" style={{ animationDelay: "1.2s" }}>

@@ -119,7 +119,8 @@ export default function ProjectorPage() {
 
   const canDock = !displayOnly;
   return (
-    <main className={`fixed inset-0 overflow-hidden ${idle ? "cursor-none" : ""}`}>
+    // projector-root: globals.css scales the root font size with the viewport, so the whole 16:9 slide fits with no scrolling.
+    <main className={`projector-root fixed inset-0 h-dvh w-screen overflow-hidden ${idle ? "cursor-none" : ""}`}>
       <Courtroom state={state} offset={serverOffset} joinUrl={joinUrl} joinFull={joinFull} results={results} error={error} onRetry={refetch} />
       {/* Last good state keeps rendering; this pill is the only sign of a failing poll. */}
       <ReconnectingPill show={!!error && !!state} big />
@@ -191,11 +192,11 @@ function Courtroom({ state, offset, joinUrl, joinFull, results, error, onRetry }
           <h1 key={title} className="animate-banner text-center text-[clamp(2rem,2.6vw,3.1rem)] font-black drop-shadow-[0_4px_0_rgba(0,0,0,0.25)]">{title}</h1>
         ) : <span />}
         <div className="flex justify-end">
-          {timer && <Countdown deadline={timer.deadline} start={timer.start} offset={offset} size={92} />}
+          {timer && <Countdown deadline={timer.deadline} start={timer.start} offset={offset} size="5.75rem" />}
         </div>
       </header>
 
-      <section key={`${state.phase}:${results.screen ?? ""}`} className="mt-4 min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      <section key={`${state.phase}:${results.screen ?? ""}`} className="mt-4 min-h-0 flex-1 overflow-hidden">
         <Stage state={state} joinUrl={joinUrl} joinFull={joinFull} results={results} />
       </section>
     </div>
@@ -217,7 +218,7 @@ function Stage({ state, joinUrl, joinFull, results }: { state: UiGameState; join
   switch (state.phase) {
     case "lobby":
       return (
-        <div className="grid h-full grid-rows-[auto_1fr] gap-6">
+        <div className="grid h-full grid-rows-[auto_minmax(0,1fr)] gap-6">
           {/* Title + join text on the left, big scannable QR on the right. */}
           <div className="flex items-center justify-center gap-14">
             <div className="min-w-0 text-center">
@@ -225,7 +226,7 @@ function Stage({ state, joinUrl, joinFull, results }: { state: UiGameState; join
               <p className="mt-6 inline-block max-w-full break-all rounded-3xl bg-white px-8 py-3 text-5xl font-black text-court shadow-[0_8px_0_rgba(0,0,0,0.3)]">Join at {joinUrl}</p>
               <p className="mt-4 text-4xl font-black">👥 {state.playerCount} player{state.playerCount === 1 ? "" : "s"}</p>
             </div>
-            <JoinQr url={joinFull} size={300} className="shrink-0" />
+            <JoinQr url={joinFull} size="18.75rem" className="shrink-0" />
           </div>
           <div className="flex flex-wrap content-start justify-center gap-3 overflow-hidden">
             {state.leaderboard.map((p, i) => (
@@ -235,12 +236,11 @@ function Stage({ state, joinUrl, joinFull, results }: { state: UiGameState; join
         </div>
       );
     case "game_over":
-      return <div className="mx-auto h-full max-w-5xl"><Podium entries={state.leaderboard} big maxRest={4} /></div>;
+      return <div className="mx-auto h-full max-w-5xl"><Podium entries={state.leaderboard} big maxRest={2} /></div>;
     case "reveal":
       return c && (
-        // Title, description, all evidence (2 columns) and both positions on one 1920x1080 screen: vh/clamp sizing,
-        // slim image area, no overflow clipping (if a case is unusually long, the section scrolls instead of cutting).
-        <div className="grid min-h-full grid-cols-[3fr_2fr] items-center gap-[2.5vw]">
+        // Title, description, all evidence (2 columns) and both positions on one screen: vh/clamp sizing, slim image.
+        <div className="grid h-full min-h-0 grid-cols-[3fr_2fr] items-center gap-[2.5vw] overflow-hidden">
           <CaseCard c={c} big showTitle />
           <div className="flex flex-col justify-center gap-[2vh]">
             <PositionCard side="A" text={c.positionA} big fit delay={400} />
@@ -251,8 +251,8 @@ function Stage({ state, joinUrl, joinFull, results }: { state: UiGameState; join
       );
     case "betting":
       return c && (
-        <div className="flex h-full flex-col justify-center gap-8">
-          <p className="text-center text-5xl font-black">{c.title}: who&apos;s right? Bet now on your phone!</p>
+        <div className="flex h-full flex-col justify-center gap-8 overflow-hidden">
+          <p className="text-center text-5xl font-black">{c.title}: who&apos;s right? Bet now (and send your agent a tip) on your phone!</p>
           <div className="grid grid-cols-2 gap-8">
             {(["A", "B"] as const).map((s) => (
               <div key={s} className={`animate-pop flex min-h-72 flex-col justify-between rounded-3xl p-8 text-white shadow-[0_10px_0_rgba(0,0,0,0.3)] ${SIDE[s].bg}`}>
@@ -310,7 +310,7 @@ const DIMS: { key: keyof CriterionScores; label: string }[] = [
   { key: "rebuttal", label: "Rebuttal" }, { key: "persuasion", label: "Persuasion" },
 ];
 
-/** Full verdict on one 16:9 screen: winner strip, A vs B score cards, then the full reasoning (scales, scrolls in its own panel). */
+/** Full verdict on one 16:9 screen: winner strip, A vs B score cards, then the reasoning (text size adapts to its length; no scrolling). */
 function VerdictScreen({ v }: { v: UiVerdict }) {
   const w = SIDE[v.winner];
   const words = v.explanation.split(/\s+/).length + (v.decisiveExchange?.description.split(/\s+/).length ?? 0);
@@ -329,7 +329,7 @@ function VerdictScreen({ v }: { v: UiVerdict }) {
         <AgentScoreCard v={v} side="B" />
       </div>
 
-      <div className={`card animate-slide-up flex min-h-0 flex-1 flex-col overflow-y-auto p-5 font-bold leading-snug ${textSize}`} style={{ animationDelay: "500ms" }}>
+      <div className={`card animate-slide-up flex min-h-0 flex-1 flex-col overflow-hidden p-5 font-bold leading-snug ${textSize}`} style={{ animationDelay: "500ms" }}>
         <p className="text-[0.7em] font-black uppercase tracking-widest text-court">Judge&apos;s reasoning</p>
         <p className="mt-1">{v.explanation}</p>
         {v.decisiveExchange && <p className="mt-2 text-[0.9em]"><span className="font-black text-court">Decisive moment:</span> {v.decisiveExchange.description}</p>}
@@ -345,7 +345,8 @@ function AgentScoreCard({ v, side }: { v: UiVerdict; side: Side }) {
   useEffect(() => { const t = setTimeout(() => setOn(true), 350); return () => clearTimeout(t); }, []);
   const sc = v.scores?.[side];
   const total = sc ? sc.evidence + sc.logic + sc.rebuttal + sc.persuasion : null;
-  const notes = [...(v.strengths?.[side] ?? []).map((t) => `✅ ${t}`), ...(v.weaknesses?.[side] ?? []).map((t) => `⚠️ ${t}`)];
+  // At most 2 strengths + 1 weakness, one line each, so both cards stay short and the reasoning keeps its space.
+  const notes = [...(v.strengths?.[side] ?? []).slice(0, 2).map((t) => `✅ ${t}`), ...(v.weaknesses?.[side] ?? []).slice(0, 1).map((t) => `⚠️ ${t}`)];
   return (
     <div className={`card animate-slide-up overflow-hidden ${won ? `ring-8 ${s.ring}` : "opacity-90"}`} style={{ animationDelay: side === "A" ? "150ms" : "300ms" }}>
       <div className={`flex items-center gap-3 px-5 py-2 text-white ${s.bg}`}>
@@ -369,7 +370,7 @@ function AgentScoreCard({ v, side }: { v: UiVerdict; side: Side }) {
         )) : <p className="font-bold text-ink/60">Scores not available for this verdict.</p>}
         {notes.length > 0 && (
           <ul className="mt-1 grid gap-0.5 text-base font-bold text-ink/80">
-            {notes.map((n, i) => <li key={i}>{n}</li>)}
+            {notes.map((n, i) => <li key={i} className="truncate">{n}</li>)}
           </ul>
         )}
       </div>
@@ -382,9 +383,8 @@ function AgentScoreCard({ v, side }: { v: UiVerdict; side: Side }) {
 function WinnerScreen({ v, state }: { v: UiVerdict; state: UiGameState }) {
   const s = SIDE[v.winner];
   return (
-    // Winner banner on top, leaderboard below. min-h-full (not h-full): if the leaderboard is taller than the
-    // screen, the courtroom section scrolls instead of clipping.
-    <div className="mx-auto flex min-h-full max-w-6xl flex-col gap-6 pb-4">
+    // Winner banner on top, top-5 leaderboard below (podium + 2 rows): always fits, never scrolls.
+    <div className="mx-auto flex h-full max-w-6xl flex-col gap-6 overflow-hidden">
       <div className={`animate-pop flex items-center justify-center gap-4 rounded-2xl px-6 py-3 text-white shadow-[0_6px_0_rgba(0,0,0,0.3)] ${s.bg}`}>
         <AgentIcon side={v.winner} className="h-14 w-14 shrink-0" />
         <div className="text-center">
@@ -395,7 +395,7 @@ function WinnerScreen({ v, state }: { v: UiVerdict; state: UiGameState }) {
       </div>
       <div className="flex flex-col">
         <p className="mb-3 text-center text-5xl font-black">🏆 Leaderboard</p>
-        <Podium entries={state.leaderboard} big maxRest={5} showDeltas />
+        <Podium entries={state.leaderboard} big maxRest={2} showDeltas />
       </div>
     </div>
   );
@@ -415,13 +415,14 @@ function Debate({ state }: { state: UiGameState }) {
     <div className="grid h-full grid-cols-[1fr_2.4fr_1fr] gap-6">
       <SideColumn side="A" text={c.positionA} active={speaking === "A"} count={items.filter((i) => i.side === "A").length} />
       <div className="flex min-h-0 flex-col">
-        <div className="mb-4 flex items-center justify-center gap-4">
+        <div className="mb-4 flex shrink-0 items-center justify-center gap-4">
           <span className="rounded-full bg-white px-6 py-2 text-3xl font-black text-court">
             {state.phase === "openings" ? "Opening statements" : `Turn ${Math.max(3, items.length)} of ${r.maxTurns + 2}`}
           </span>
           {r.suggestionsOpen && <span className="animate-pulse rounded-full bg-gold px-5 py-2 text-2xl font-black text-ink">💡 Send your tips now!</span>}
         </div>
-        <div className="flex min-h-0 flex-1 flex-col justify-end gap-4 overflow-hidden">
+        {/* Latest 4 messages, newest at the bottom; anything taller fades out at the top instead of scrolling. */}
+        <div className="flex min-h-0 flex-1 flex-col justify-end gap-4 overflow-hidden [mask-image:linear-gradient(to_bottom,transparent,black_10%)]">
           {visible.map((a: PublicArgument) => <SpeechBubble key={a.key} arg={a} big newest={a.key === last?.key} />)}
           {r.nextSpeaker && <ThinkingBubble side={r.nextSpeaker} big />}
           {items.length === 0 && !r.nextSpeaker && <p className="text-center text-4xl font-black text-white/70">Court is in session…</p>}

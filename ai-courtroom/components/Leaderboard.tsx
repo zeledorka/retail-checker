@@ -29,7 +29,7 @@ export function Podium({ entries, big = false, maxRest = 5, showDeltas = false }
               <span className={`max-w-full truncate font-black ${big ? "text-2xl" : "text-sm"} ${e.isMe ? "underline decoration-4" : ""}`}>{e.nickname}</span>
               <span className={`font-extrabold text-white/80 ${big ? "text-xl" : "text-xs"}`}>🪙 {e.tokens}{showDeltas && <DeltaChip d={e.roundDelta} big={big} />}</span>
               <div className={`mt-1 w-full rounded-t-xl ${p.bg} ${big ? "" : p.h} grid place-items-center text-ink shadow-[0_6px_0_rgba(0,0,0,0.25)]`}
-                style={big ? { height: p.place === 1 ? 200 : p.place === 2 ? 150 : 110 } : undefined}>
+                style={big ? { height: p.place === 1 ? "12.5rem" : p.place === 2 ? "9.375rem" : "6.875rem" } : undefined}>
                 <span className={`font-black ${big ? "text-6xl" : "text-3xl"}`}>{p.place}</span>
               </div>
             </div>

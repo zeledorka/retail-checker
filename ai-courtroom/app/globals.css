@@ -70,6 +70,12 @@ body {
 }
 @keyframes waiting-slide { 0% { transform: translateX(-100%) } 100% { transform: translateX(250%) } }
 
+/* /projector only: the screen is a 16:9 slide. The root font size follows the viewport's limiting dimension
+   (16px at 1920x1080, ~11.4px at 1366x768, ~10.7px at 1280x720), so every rem-based size shrinks evenly and no phase
+   ever needs to scroll. Sizes inside the projector must be rem/vh/vw (never fixed px) for this to work. */
+html:has(.projector-root) { font-size: min(0.8333vw, 1.4815vh); }
+html:has(.projector-root), html:has(.projector-root) body { overflow: hidden; }
+
 /* /play only: every Tailwind size (text, padding, gaps, icons) is rem-based, so shrinking the root font size scales
    the whole player screen evenly. The projector is unaffected. Tweak these two percentages to resize the phone UI. */
 html:has(.play-root) { font-size: 87.5%; }                                   /* 14px instead of 16px */

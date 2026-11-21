@@ -10,7 +10,7 @@ const Body = z.object({
 });
 // NOTE: there is no `side` field. The side is looked up from the player's bet in SQL,
 // so a player can't coach the side they didn't bet on.
-// There is no `window` either: ONE clue per player per round, accepted during OPENINGS and DEBATE.
+// There is no `window` either: ONE clue per player per round, accepted during BETTING (after the bet), OPENINGS and DEBATE.
 // Every accepted clue is passed to that side's agent on its next turn (no top-3 sampling).
 
 export async function POST(req: Request) {
@@ -22,7 +22,7 @@ export async function POST(req: Request) {
 
   const { roundId, text } = parsed.data;
 
-  // submit_injection checks: OPENINGS/DEBATE phase, server-time deadline, has a bet,
+  // submit_injection checks: BETTING/OPENINGS/DEBATE phase, server-time deadline, has a bet,
   // length, and one clue per player per round (unique constraint).
   const { data, error } = await db.rpc('submit_injection', {
     p_player: user.id,

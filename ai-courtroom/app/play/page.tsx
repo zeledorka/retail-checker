@@ -30,7 +30,7 @@ export default function PlayPage() {
   else body = <Game state={state} offset={serverOffset} error={error} refetch={refetch} />;
 
   return (
-    <main className="mx-auto flex w-full max-w-md flex-1 flex-col">
+    <main className="play-root mx-auto flex w-full max-w-md flex-1 flex-col">
       {body}
       {USE_MOCK && <MockFab onChange={refetch} />}
     </main>
@@ -113,7 +113,7 @@ function Game({ state, offset, error, refetch }: { state: UiGameState; offset: n
         </div>
         <TokenBadge tokens={me.tokens} />
         {/* No countdown once the round is over: the next round starts when the host says so. */}
-        {!roundOver && <Countdown deadline={r?.phaseEndsAt} start={r?.phaseStartedAt} offset={offset} size={48} />}
+        {!roundOver && <Countdown deadline={r?.phaseEndsAt} start={r?.phaseStartedAt} offset={offset} size={42} />}
       </header>
       {error && <p className="bg-agent-a px-3 py-1 text-center text-sm font-black">📡 Reconnecting… ({error})</p>}
 

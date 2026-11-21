@@ -70,6 +70,11 @@ body {
 }
 @keyframes waiting-slide { 0% { transform: translateX(-100%) } 100% { transform: translateX(250%) } }
 
+/* /play only: every Tailwind size (text, padding, gaps, icons) is rem-based, so shrinking the root font size scales
+   the whole player screen evenly. The projector is unaffected. Tweak these two percentages to resize the phone UI. */
+html:has(.play-root) { font-size: 87.5%; }                                   /* 14px instead of 16px */
+@media (max-width: 380px) { html:has(.play-root) { font-size: 81.25%; } }    /* 13px on small phones */
+
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { scrollbar-width: none; }
 

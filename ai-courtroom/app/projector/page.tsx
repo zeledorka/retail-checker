@@ -340,13 +340,13 @@ function WinnerScreen({ v, state }: { v: UiVerdict; state: UiGameState }) {
     // Winner banner on top, leaderboard below. min-h-full (not h-full): if the leaderboard is taller than the
     // screen, the courtroom section scrolls instead of clipping.
     <div className="mx-auto flex min-h-full max-w-6xl flex-col gap-6 pb-4">
-      <div className={`animate-pop flex items-center justify-center gap-6 rounded-3xl px-8 py-5 text-white shadow-[0_10px_0_rgba(0,0,0,0.3)] ${s.bg}`}>
-        <AgentIcon side={v.winner} className="h-20 w-20 shrink-0" />
+      <div className={`animate-pop flex items-center justify-center gap-4 rounded-2xl px-6 py-3 text-white shadow-[0_6px_0_rgba(0,0,0,0.3)] ${s.bg}`}>
+        <AgentIcon side={v.winner} className="h-14 w-14 shrink-0" />
         <div className="text-center">
-          <p className="text-[clamp(2.2rem,4vw,5rem)] font-black leading-none drop-shadow-[0_6px_0_rgba(0,0,0,0.25)]">{s.name} wins the case!</p>
-          {v.summary && <p className="mt-2 text-[clamp(1rem,1.4vw,1.75rem)] font-bold text-white/90">{v.summary}</p>}
+          <p className="text-[clamp(1.8rem,3.2vw,4rem)] font-black leading-none drop-shadow-[0_6px_0_rgba(0,0,0,0.25)]">{s.name} wins the case!</p>
+          {v.summary && <p className="mt-2 text-[clamp(0.9rem,1.2vw,1.5rem)] font-bold text-white/90">{v.summary}</p>}
         </div>
-        <AgentIcon side={v.winner} className="h-20 w-20 shrink-0" />
+        <AgentIcon side={v.winner} className="h-14 w-14 shrink-0" />
       </div>
       <div className="flex flex-col">
         <p className="mb-3 text-center text-5xl font-black">🏆 Leaderboard</p>

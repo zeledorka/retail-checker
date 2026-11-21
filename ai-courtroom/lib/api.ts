@@ -185,23 +185,58 @@ export async function currentUserId(): Promise<string | null> {
   return data.session?.user.id ?? null;
 }
 
+/**
+ * Short human messages, keyed by the backend's error code (lib/game/errors.ts). Codes first, because one HTTP status can
+ * mean different things: 403 is both FORBIDDEN (wrong admin secret) and NOT_JOINED (player); 409 covers every
+ * game-rule conflict. Server message text is only shown when it is clearly plain human text (e.g. join's
+ * "Max 20 characters"); developer text like "call /api/admin/start" or raw error dumps never reach the UI.
+ */
 const FRIENDLY: Partial<Record<ApiErrorCode, string>> = {
   BETTING_CLOSED: "Betting has closed for this round.",
-  ALREADY_BET: "You've already placed a bet this round.",
+  ALREADY_BET: "You already bet this round.",
   INSUFFICIENT_TOKENS: "You don't have enough tokens for that.",
   INJECTION_CLOSED: "Suggestions are closed right now.",
-  NO_BET: "Only players who placed a bet can send a suggestion.",
-  ALREADY_INJECTED: "You've already sent your suggestion this round.",
-  UNAUTHENTICATED: "Your session expired. Please rejoin.",
+  NO_BET: "Place a bet first: only backers can coach their agent.",
+  ALREADY_INJECTED: "You already sent your suggestion this round.",
+  UNAUTHENTICATED: "Your session expired. Rejoin to keep playing.",
   NOT_JOINED: "Join the game first.",
-  FORBIDDEN: "Wrong admin secret.",
-  AI_NOT_DONE: "The AI is still working on this step.",
+  FORBIDDEN: "Wrong admin secret. Lock the dock and unlock again.",
+  AI_NOT_DONE: "The AI is still working on this step. Try again in a moment.",
   NO_CASES_LEFT: "No cases left to play.",
-  INTERNAL: "The server hit a problem. Try again.",
-  NETWORK: "Can't reach the server. Check your connection.",
+  INTERNAL: "Server hiccup, try again.",
+  NETWORK: "Can't reach the server. Check your connection and try again.",
 };
-export const friendly = (e: unknown) =>
-  e instanceof ApiError ? FRIENDLY[e.code] ?? e.message : e instanceof Error ? e.message : "Something went wrong";
+/** Fallback by HTTP status when the code is unknown (e.g. a proxy, Vercel or Supabase answered instead of our route). */
+function byStatus(status: number): string | null {
+  if (status === 401) return FRIENDLY.UNAUTHENTICATED!;
+  if (status === 403) return "That's not allowed.";
+  if (status === 404) return "Not found. The round may have moved on.";
+  if (status === 409) return "That's not possible right now.";
+  if (status === 429) return "Too many requests, try again in a moment.";
+  if (status >= 500) return "Server hiccup, retrying…";
+  return null;
+}
+/** Server text that is safe to show as-is: short, plain words, no code/JSON/stack/route paths. */
+function humanText(m: string | undefined): string | null {
+  if (!m) return null;
+  const t = m.trim();
+  if (t.length === 0 || t.length > 120 || /^[A-Z_]+$/.test(t)) return null; // empty, too long, or just a code
+  if (/[{}<>\[\]]|\/api\/|Error:|\bat \S+:\d+|\n/.test(t)) return null; // JSON, routes, stack traces, multi-line
+  return t;
+}
+/** Short single line for admin-only AI failure toasts (the host benefits from the reason, but never a stack/dump). */
+export function shortReason(m: string | undefined): string {
+  const t = (m ?? "").replace(/^(\w*Error:\s*)+/, "").split("\n")[0].trim();
+  if (!t || /[{}]/.test(t)) return "unknown error";
+  return t.length > 100 ? `${t.slice(0, 97)}…` : t;
+}
+export function friendly(e: unknown): string {
+  if (e instanceof ApiError) {
+    if (e.code === "BAD_REQUEST") return humanText(e.message) ?? "That didn't look right. Check it and try again.";
+    return FRIENDLY[e.code] ?? byStatus(e.status) ?? humanText(e.message) ?? "Something went wrong. Try again.";
+  }
+  return "Something went wrong. Try again.";
+}
 
 async function http<T>(path: string, init: RequestInit & { auth?: "required" | "optional" | "none"; admin?: string } = {}): Promise<T> {
   const headers: Record<string, string> = { "content-type": "application/json" };
@@ -218,8 +253,11 @@ async function http<T>(path: string, init: RequestInit & { auth?: "required" | "
   }
   const body = await res.json().catch(() => null);
   if (!res.ok) {
-    const code = (body?.error?.code as ApiErrorCode) ?? (res.status === 403 ? "FORBIDDEN" : "UNKNOWN");
-    throw new ApiError(code, body?.error?.message ?? body?.error ?? `HTTP ${res.status}`, res.status);
+    // Body is { error: { code, message } } from our routes, { status: "failed", error: "..." } from run-ai, or anything
+    // (HTML, empty) from a proxy. Only plain strings are kept; friendly() decides what is shown.
+    const code = typeof body?.error?.code === "string" ? (body.error.code as ApiErrorCode) : "UNKNOWN";
+    const message = typeof body?.error?.message === "string" ? body.error.message : typeof body?.error === "string" ? body.error : `HTTP ${res.status}`;
+    throw new ApiError(code, message, res.status);
   }
   return body as T;
 }
@@ -265,7 +303,7 @@ function aiToast(ai: RunAiResponse): AdminResult {
     case "progress": return { ok: true, kind: "info", detail: "AI working: one step done, more to go" };
     case "done": return { ok: true, kind: "ok", detail: "AI step done for this phase" };
     case "skipped": return { ok: true, kind: "info", detail: "AI skipped (busy elsewhere, or nothing to do)" };
-    case "failed": return { ok: true, kind: "error", detail: `AI failed: ${ai.error ?? "unknown error"}` };
+    case "failed": return { ok: true, kind: "error", detail: `AI failed: ${shortReason(ai.error)}` };
   }
 }
 
@@ -286,7 +324,7 @@ export const admin = {
       return aiToast(await http<RunAiResponse>("/api/admin/run-ai", { method: "POST", admin: secret, body: JSON.stringify({ roundId, expectedPhase: rawPhase }) }));
     } catch (e) {
       // The route answers a failed step with HTTP 502 + { status: "failed", error }.
-      if (e instanceof ApiError && e.status === 502) throw new ApiError("UNKNOWN", `AI failed: ${e.message}`, 502);
+      if (e instanceof ApiError && e.status === 502) return { ok: true, kind: "error", detail: `AI failed: ${shortReason(e.message)}` };
       throw e;
     }
   },

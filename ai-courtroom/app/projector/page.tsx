@@ -337,9 +337,11 @@ function AgentScoreCard({ v, side }: { v: UiVerdict; side: Side }) {
 function WinnerScreen({ v, state }: { v: UiVerdict; state: UiGameState }) {
   const s = SIDE[v.winner];
   return (
-    <div className="relative grid h-full min-h-0 grid-cols-[1fr_1.15fr] gap-10">
+    // min-h-full (not h-full) + no overflow-hidden: if the leaderboard is taller than the screen, the courtroom
+    // section scrolls instead of clipping. Confetti is pointer-events-none so it never blocks the wheel.
+    <div className="relative grid min-h-full grid-cols-[1fr_1.15fr] gap-10">
       <Confetti />
-      <div className="flex min-h-0 flex-col items-center justify-center">
+      <div className="flex flex-col items-center justify-center">
         <div className={`animate-pop w-full rounded-[2.5rem] p-10 text-center text-white shadow-[0_12px_0_rgba(0,0,0,0.3)] ${s.bg}`}>
           <AgentIcon side={v.winner} className="mx-auto h-40 w-40 animate-float" />
           <p className="mt-4 text-[clamp(3rem,5.5vw,7rem)] font-black leading-none drop-shadow-[0_6px_0_rgba(0,0,0,0.25)]">{s.name}</p>
@@ -347,7 +349,7 @@ function WinnerScreen({ v, state }: { v: UiVerdict; state: UiGameState }) {
           {v.summary && <p className="mt-4 text-[clamp(1.1rem,1.5vw,1.9rem)] font-bold text-white/90">{v.summary}</p>}
         </div>
       </div>
-      <div className="flex min-h-0 flex-col overflow-hidden">
+      <div className="flex flex-col pb-4">
         <p className="mb-3 text-center text-5xl font-black">🏆 Leaderboard</p>
         <Podium entries={state.leaderboard} big maxRest={5} showDeltas />
       </div>

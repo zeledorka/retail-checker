@@ -12,12 +12,18 @@ export const MOCK_SCENARIO: Scenario = {
     "Halloween decorations were packed into the room late last night",
     "A mop and bucket of cleaning equipment stand nearby, recently used",
     "The room was locked overnight and only two staff hold keys",
+    "Two of the decoration boxes are torn open at one corner",
+    "The caretaker noticed a faint metallic smell when unlocking the room",
   ],
   interpretationA: "It's a Halloween prop: fake blood that leaked from the stored decorations.",
   interpretationB: "It's evidence of violence: real blood, and someone tried to clean it up.",
 };
 
-/** Served from ai-courtroom/public/cases/. Use any path under public/ or a full https URL; null = no image. */
+/**
+ * Served from ai-courtroom/public/cases/. Use any path under public/ or a full https URL; null = no image.
+ * The mock shows this image by default; the "Case reveal (no image)" preset switches it to null (like every real seed
+ * case today) so the placeholder banner can be checked.
+ */
 export const MOCK_IMAGE_URL: string | null = "/cases/crimson-storeroom.svg";
 
 /** 10 public arguments: openings (seq 1-2) then 8 alternating debate turns (seq 3-10). Each <= 45 words. */
@@ -34,6 +40,11 @@ export const MOCK_LINES: { side: Side; text: string }[] = [
   { side: "B", text: "Confidence isn't evidence. Unexplained stain, locked access, partial clean-up. Until it's tested, the cautious reading is the one that protects a possible victim. That reading is mine." },
 ];
 
+/**
+ * A = the FULL engine verdict (overall, strengths, weaknesses, decisiveExchange): what the UI shows once Dev 3 passes
+ * those through. B = exactly what /api/state returns TODAY (winner, explanation, summary, scores only), so the
+ * "extras absent" display path is visible too. Results: win -> usually A, Results: lose -> usually B.
+ */
 export const MOCK_VERDICT: Record<Side, JudgeVerdict> = {
   A: {
     winner: "A",
@@ -64,16 +75,7 @@ export const MOCK_VERDICT: Record<Side, JudgeVerdict> = {
       A: { evidence: 6, logic: 7, rebuttal: 5, persuasion: 6 },
       B: { evidence: 7, logic: 8, rebuttal: 8, persuasion: 7 },
     },
-    overall: { A: 6, B: 7.5 },
-    strengths: {
-      A: ["Clear, simple opening anchored to the Halloween timing"],
-      B: ["Built a consistent chain from key access to the partial clean-up", "Exposed the missing prop container"],
-    },
-    weaknesses: {
-      A: ["Rebuttals relied on routine cleaning that is not in the evidence", "Did not answer the key-access point"],
-      B: ["The 'sticky means dried blood' claim is contestable"],
-    },
-    decisiveExchange: { refs: ["E5", "E6"], description: "B's challenge on the missing fake-blood container was never answered." },
+    // No overall / strengths / weaknesses / decisiveExchange: mirrors today's real /api/state verdict.
   },
 };
 

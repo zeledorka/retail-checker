@@ -40,6 +40,8 @@ type MockStore = {
   frozenElapsed: number | null; // seconds; set = clock paused at this point
   winner: Side;
   netFail: boolean;
+  /** Case image switched off (null imageUrl, like the real seed cases) by the "Case reveal (no image)" preset. */
+  noImage?: boolean;
   players: Record<string, MockPlayer>;
 };
 
@@ -177,7 +179,7 @@ function buildState(s: MockStore, playerId: string | null, now: number): UiGameS
     round, phase,
     case: s.t0 === null ? null : {
       id: "mock-case", title: MOCK_SCENARIO.title, description: MOCK_SCENARIO.description, evidence: MOCK_SCENARIO.evidence,
-      positionA: MOCK_SCENARIO.interpretationA, positionB: MOCK_SCENARIO.interpretationB, imageUrl: MOCK_IMAGE_URL,
+      positionA: MOCK_SCENARIO.interpretationA, positionB: MOCK_SCENARIO.interpretationB, imageUrl: s.noImage ? null : MOCK_IMAGE_URL,
     },
     transcript, verdict, me, leaderboard, playerCount: leaderboard.length,
   };
@@ -355,11 +357,12 @@ export async function mockAdminReset() {
 // ---- phase switcher (mock only) ----
 
 export type MockPreset =
-  | "lobby" | "reveal" | "betting" | "openings" | "debate-2" | "debate-5" | "debate-8"
+  | "lobby" | "reveal" | "reveal-noimg" | "betting" | "openings" | "debate-2" | "debate-5" | "debate-8"
   | "judging" | "results-win" | "results-lose" | "results-nobet" | "incomplete" | "cancelled";
 
 export const MOCK_PRESETS: { id: MockPreset; label: string }[] = [
-  { id: "lobby", label: "Lobby" }, { id: "reveal", label: "Case reveal" }, { id: "betting", label: "Betting" },
+  { id: "lobby", label: "Lobby" }, { id: "reveal", label: "Case reveal" },
+  { id: "reveal-noimg", label: "Case reveal (no image)" }, { id: "betting", label: "Betting" },
   { id: "openings", label: "Openings" }, { id: "debate-2", label: "Debate T2" }, { id: "debate-5", label: "Debate T5" },
   { id: "debate-8", label: "Debate T8" }, { id: "judging", label: "Judging" }, { id: "results-win", label: "Results: win" },
   { id: "results-lose", label: "Results: lose" },
@@ -396,9 +399,11 @@ export function mockApplyPreset(preset: MockPreset, freeze: boolean) {
   const needsNewRound = preset === "results-nobet" || s.t0 === null || s.cancelledAt !== null || phaseAt(s, elapsedOf(s, simNow())) === "results";
   if (needsNewRound) startRound(s);
   s.variant = preset === "incomplete" ? "incomplete" : "normal";
+  if (preset === "reveal") s.noImage = false;
+  if (preset === "reveal-noimg") s.noImage = true;
   s.frozenElapsed = freeze ? 0 : null;
   const at: Record<Exclude<MockPreset, "lobby">, number> = {
-    reveal: 1, betting: T.betting + 0.5, openings: T.openings + 0.5, "debate-2": 43, "debate-5": 60, "debate-8": 77,
+    reveal: 1, "reveal-noimg": 1, betting: T.betting + 0.5, openings: T.openings + 0.5, "debate-2": 43, "debate-5": 60, "debate-8": 77,
     judging: T.judging + 1, "results-win": T.results + 0.2, "results-lose": T.results + 0.2, "results-nobet": T.results + 0.2, incomplete: T.results + 0.2, cancelled: 50,
   };
   if (preset === "results-win" || preset === "results-lose" || preset === "incomplete" || preset === "cancelled") ensureBets(s);

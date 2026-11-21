@@ -1,39 +1,47 @@
+# VS Code REST Client. Secrets come from .env (never paste them here):
+#   ADMIN_SECRET=...   (already in .env)
+#   TEST_TOKEN=...     (a player token: npx tsx --env-file=.env scripts/dev/get-token.ts; expires after 1 hour)
+# Round phases: REVEAL → BETTING → OPENINGS → DEBATE → JUDGING → RESULTS → (next round)   [or CANCELLED]
 @base = http://localhost:3000
-### PASTE_TOKEN_FROM_GET_TOKEN_SCRIPT
-@token = eyJhbGciOiJFUzI1NiIsImtpZCI6IjllMTk4MDQ5LTM3NzctNDlmZS1hZjRkLTJjNTFhNDk4YTlhNyIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2VwanNtcG9wZGl4Znd5dmtyZG5qLnN1cGFiYXNlLmNvL2F1dGgvdjEiLCJzdWIiOiIwNGE5YjIzYS04N2I1LTRhZTctOWRjZi03Y2RjZGY0YjAzZTIiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzk1MjMyMTM1LCJpYXQiOjE3OTUyMjg1MzUsImVtYWlsIjoiIiwicGhvbmUiOiIiLCJhcHBfbWV0YWRhdGEiOnt9LCJ1c2VyX21ldGFkYXRhIjp7fSwicm9sZSI6ImF1dGhlbnRpY2F0ZWQiLCJhYWwiOiJhYWwxIiwiYW1yIjpbeyJtZXRob2QiOiJhbm9ueW1vdXMiLCJ0aW1lc3RhbXAiOjE3OTUyMjg1MzV9XSwic2Vzc2lvbl9pZCI6IjhmYzA0Mzk5LTNiNDUtNGViMi04MDQ1LTNhYTlhZjJlZTZhOSIsImlzX2Fub255bW91cyI6dHJ1ZX0.7d-HYW8CMbmLXjSMQkMH_BjSC6ljsvScQdPjfHbBcpPgW-oiRXjFAPVzoFprF33Xm3kCKd68xIzXXY41USXW8g
-### ADMIN_SECRET_KEY
+@token = {{$dotenv TEST_TOKEN}}
 @admin = {{$dotenv ADMIN_SECRET}}
+# Copy round.id from a state response
+@roundId = PASTE_ROUND_ID
 
-### State (as projector, no auth)
+### State (projector, no auth) — round.winner / round.verdict stay null until RESULTS
 GET {{base}}/api/state
 
-### Join
+### State (as player) — includes `me` { nickname, tokens, bet, injection }
+GET {{base}}/api/state
+Authorization: Bearer {{token}}
+
+### Join (nickname 1-20 chars; re-join keeps tokens)
 POST {{base}}/api/join
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
 { "nickname": "Lars" }
 
-### State (as player)
-GET {{base}}/api/state
-Authorization: Bearer {{token}}
-
-### State (as projector, no auth)
-GET {{base}}/api/state
-
-### Bet — copy round.id from the state response
+### Bet — BETTING only, one bet per player per round (second → 409 ALREADY_BET)
 POST {{base}}/api/bet
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "roundId": "PASTE_ROUND_ID", "side": "A", "stake": 20 }
+{ "roundId": "{{roundId}}", "side": "A", "stake": 20 }
 
-### Inject — ONE clue per player per round, during OPENINGS or DEBATE, max 200 chars (side = your bet)
+### Inject — body is { roundId, text } only (side = your bet). ONE clue per player per round,
+### accepted during OPENINGS and DEBATE, text 1-200 chars.
+### Errors: NO_BET, INJECTION_CLOSED, ALREADY_INJECTED, BAD_REQUEST
 POST {{base}}/api/inject
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "roundId": "PASTE_ROUND_ID", "text": "Point out the muddy footprints." }
+{ "roundId": "{{roundId}}", "text": "Point out the muddy footprints." }
+
+### Leaderboard
+GET {{base}}/api/leaderboard
+
+### ---------------- Admin ----------------
 
 ### Reset (fresh game, everyone back to 100)
 POST {{base}}/api/admin/reset
@@ -43,9 +51,14 @@ x-admin-secret: {{admin}}
 POST {{base}}/api/admin/start
 x-admin-secret: {{admin}}
 
-### Advance — change expectedPhase each time:
-### REVEAL → BETTING → OPENINGS → DEBATE → JUDGING → RESULTS → (next round)
-### OPENINGS needs both openings done, JUDGING needs the verdict: use "Run next AI step" below until status is "done".
+### Autopilot step — call ~every second; moves phases on their timers and runs one AI call per call.
+### Or run: npx tsx --env-file=.env scripts/dev/autopilot.ts
+POST {{base}}/api/admin/tick
+x-admin-secret: {{admin}}
+
+### Advance by hand — expectedPhase = the phase you think it is now (stale → no change):
+### REVEAL | BETTING | OPENINGS | DEBATE | JUDGING | RESULTS | CANCELLED
+### OPENINGS needs both openings done and JUDGING needs the verdict (else 409 AI_NOT_DONE).
 ### DEBATE can be advanced any time (the judge rules on the turns that exist).
 POST {{base}}/api/admin/advance
 x-admin-secret: {{admin}}
@@ -53,20 +66,16 @@ Content-Type: application/json
 
 { "expectedPhase": "REVEAL" }
 
-### Autopilot step (call repeatedly instead of advance) — or run: npx tsx --env-file=.env scripts/dev/autopilot.ts
-POST {{base}}/api/admin/tick
-x-admin-secret: {{admin}}
-
 ### Run next AI step / retry a failed one (one model call: next opening, next turn, or the judge)
 POST {{base}}/api/admin/run-ai
 x-admin-secret: {{admin}}
 Content-Type: application/json
 
-{ "roundId": "PASTE_ROUND_ID", "expectedPhase": "OPENINGS" }
+{ "roundId": "{{roundId}}", "expectedPhase": "OPENINGS" }
 
-### Cancel + refund
+### Cancel + refund every stake (once)
 POST {{base}}/api/admin/cancel
 x-admin-secret: {{admin}}
 Content-Type: application/json
 
-{ "roundId": "PASTE_ROUND_ID" }
+{ "roundId": "{{roundId}}" }

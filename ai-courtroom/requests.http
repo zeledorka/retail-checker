@@ -1,6 +1,8 @@
 @base = http://localhost:3000
 ### PASTE_TOKEN_FROM_GET_TOKEN_SCRIPT
 @token = eyJhbGciOiJFUzI1NiIsImtpZCI6IjllMTk4MDQ5LTM3NzctNDlmZS1hZjRkLTJjNTFhNDk4YTlhNyIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2VwanNtcG9wZGl4Znd5dmtyZG5qLnN1cGFiYXNlLmNvL2F1dGgvdjEiLCJzdWIiOiIwNGE5YjIzYS04N2I1LTRhZTctOWRjZi03Y2RjZGY0YjAzZTIiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzk1MjMyMTM1LCJpYXQiOjE3OTUyMjg1MzUsImVtYWlsIjoiIiwicGhvbmUiOiIiLCJhcHBfbWV0YWRhdGEiOnt9LCJ1c2VyX21ldGFkYXRhIjp7fSwicm9sZSI6ImF1dGhlbnRpY2F0ZWQiLCJhYWwiOiJhYWwxIiwiYW1yIjpbeyJtZXRob2QiOiJhbm9ueW1vdXMiLCJ0aW1lc3RhbXAiOjE3OTUyMjg1MzV9XSwic2Vzc2lvbl9pZCI6IjhmYzA0Mzk5LTNiNDUtNGViMi04MDQ1LTNhYTlhZjJlZTZhOSIsImlzX2Fub255bW91cyI6dHJ1ZX0.7d-HYW8CMbmLXjSMQkMH_BjSC6ljsvScQdPjfHbBcpPgW-oiRXjFAPVzoFprF33Xm3kCKd68xIzXXY41USXW8g
+### ADMIN_SECRET_KEY
+@admin = {{$dotenv ADMIN_SECRET}}
 
 ### State (as projector, no auth)
 GET {{base}}/api/state
@@ -32,8 +34,6 @@ Authorization: Bearer {{token}}
 Content-Type: application/json
 
 { "roundId": "PASTE_ROUND_ID", "window": 1, "text": "Point out the muddy footprints." }
-
-@admin = some-long-random-string
 
 ### Reset (fresh game, everyone back to 100)
 POST {{base}}/api/admin/reset

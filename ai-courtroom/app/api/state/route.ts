@@ -1,21 +1,19 @@
-import { NextResponse } from 'next/server';
+// `connection` is the cacheComponents-friendly way to say "never cache this route".
+import { NextResponse, connection } from 'next/server';
 import { getUser } from '@/lib/supabase/auth';
 import { buildState } from '@/lib/game/state';
 import { fail } from '@/lib/game/errors';
 
-// Next.js may CACHE GET routes. This line forces a fresh response every call.
-// Without it, players could see stale phases.
-export const dynamic = 'force-dynamic';
+// (removed: export const dynamic = 'force-dynamic'; not allowed with cacheComponents)
 
 export async function GET(req: Request) {
+  await connection(); // must run on every request: live game state
   try {
-    // Auth is OPTIONAL here: the projector has no player. getUser returns null in that case.
     const user = await getUser(req);
-    // `user?.id ?? null` = "user's id if user exists, otherwise null".
     const state = await buildState(user?.id ?? null);
     return NextResponse.json(state);
   } catch (e) {
     console.error('[state]', e);
-    return fail('INTERNAL', 500);
+    return fail('INTERNAL', 500, process.env.NODE_ENV === 'production' ? 'Something went wrong' : String((e as Error)?.message ?? e));
   }
 }

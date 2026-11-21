@@ -17,8 +17,13 @@ const URL_ = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const PUB = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 const SECRET = process.env.SUPABASE_SECRET_KEY;
 const JUDGE_FAIL = process.argv.includes('--judge-fail');
+// --one-round: stop after round 1 RESULTS and print a report (timings, transcript, verdict, clues). For live AI runs:
+// the debate may end on the clock, so 1-8 turns are accepted instead of exactly 8.
+const ONE_ROUND = process.argv.includes('--one-round');
 const WAIT_TIMEOUT_MS = 180_000;
 const CLUE = 'The lock has no scratches, so a key was used.';
+const BOB_CLUE = 'The insurance renewal was due that same week. Ask who benefits.';
+const tickLog: { at: string; ms: number; from: string; to: string; ai?: string }[] = [];
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const ts = () => new Date().toISOString().slice(11, 19);
@@ -58,11 +63,16 @@ async function tickUntil(done: (s: any) => boolean, label: string): Promise<any>
   const deadline = Date.now() + WAIT_TIMEOUT_MS;
   let last = '';
   while (Date.now() < deadline) {
+    const t0 = Date.now();
     const t = await tick();
+    const ms = Date.now() - t0;
     if (t.status !== 200) console.log(ts(), `   tick HTTP ${t.status}`, JSON.stringify(t.body));
     if (t.body?.ai?.status === 'failed') console.log(ts(), '   AI failed:', t.body.ai.error);
     const s = await state();
     const where = `${s?.game?.status} r${s?.round?.roundNumber ?? '-'} ${s?.round?.phase ?? '(none)'}`;
+    if (t.body?.ai || t.body?.changed || t.status !== 200) {
+      tickLog.push({ at: ts(), ms, from: last || '?', to: where, ai: t.body?.ai ? `${t.body.ai.status}${t.body.ai.error ? `: ${t.body.ai.error}` : ''}` : t.status !== 200 ? `HTTP ${t.status}` : undefined });
+    }
     if (where !== last) { console.log(ts(), `── ${where}`); last = where; }
     if (done(s)) return s;
     await sleep(1000);
@@ -76,7 +86,7 @@ async function main() {
     if (!v) throw new Error(`${k} missing: run with --env-file=.env`);
   }
   const db = createClient(URL_!, SECRET!, { auth: { persistSession: false } });   // read-only checks of ledger/verdicts
-  console.log(`simulate: ${BASE} mode=${JUDGE_FAIL ? 'judge-fail' : 'full game'}`);
+  console.log(`simulate: ${BASE} mode=${JUDGE_FAIL ? 'judge-fail' : ONE_ROUND ? 'one round' : 'full game'}`);
 
   // ---------- admin auth: every admin route rejects a missing / wrong secret (before anything changes) ----------
   const adminRoutes: [string, unknown][] = [
@@ -164,6 +174,8 @@ async function main() {
   check('inject 201 chars → BAD_REQUEST', tooLong.status === 400 && errCode(tooLong) === 'BAD_REQUEST', tooLong.body);
   const clue = await call('POST', '/api/inject', { token: alice.token, body: { roundId, text: CLUE } });
   check('alice submits a clue', clue.status === 200 && clue.body?.accepted === true, clue.body);
+  const bobClue = await call('POST', '/api/inject', { token: bob.token, body: { roundId, text: BOB_CLUE } });
+  check('bob submits a clue (side B)', bobClue.status === 200 && bobClue.body?.accepted === true, bobClue.body);
   const clue2 = await call('POST', '/api/inject', { token: alice.token, body: { roundId, text: 'second clue' } });
   check('second clue same round → ALREADY_INJECTED', clue2.status === 409 && errCode(clue2) === 'ALREADY_INJECTED', clue2.body);
 
@@ -173,7 +185,7 @@ async function main() {
     const [a, b, c] = await Promise.all([state(alice.token), state(bob.token), state(carol.token)]);
     check('mid-DEBATE fresh GET /api/state restores me.bet + me.injection',
       a?.round?.phase === 'DEBATE' && a?.me?.bet?.side === 'A' && a?.me?.bet?.stake === 20 && a?.me?.injection?.text === CLUE &&
-      b?.me?.bet?.side === 'B' && b?.me?.injection === null && c?.me?.bet === null && c?.me?.injection === null,
+      b?.me?.bet?.side === 'B' && b?.me?.injection?.text === BOB_CLUE && c?.me?.bet === null && c?.me?.injection === null,
       { alice: a?.me, bob: b?.me, carol: c?.me });
   } else {
     check('mid-DEBATE fresh GET /api/state restores me.bet + me.injection', false, `DEBATE not observed (jumped to ${inDebate.round.phase})`);
@@ -191,8 +203,9 @@ async function main() {
     check('GET /api/state during JUDGING has no winner/verdict (projector + player)', leakFree(pub) && leakFree(priv), pub?.round);
     const msgs = (pub?.publicMessages ?? []) as any[];
     const count = (st: string) => msgs.filter((m) => m.stage === st).length;
-    check('debate: 2 openings + 8 turns in publicMessages', count('opening') === 2 && count('turn') === 8, { openings: count('opening'), turns: count('turn') });
-    check('no audience clue text leaks into public state', !JSON.stringify(pub).includes(CLUE));
+    const turnsOk = ONE_ROUND ? count('turn') >= 1 && count('turn') <= 8 : count('turn') === 8;
+    check(`debate: 2 openings + ${ONE_ROUND ? '1-8' : '8'} turns in publicMessages`, count('opening') === 2 && turnsOk, { openings: count('opening'), turns: count('turn') });
+    check('no audience clue text leaks into public state', !JSON.stringify(pub).includes(CLUE) && !JSON.stringify(pub).includes(BOB_CLUE));
   }
 
   if (JUDGE_FAIL) {
@@ -227,6 +240,25 @@ async function main() {
     const winners = bets.filter((b) => b.side === winner);
     check(`ledger r1: exactly ${winners.length} payout rows (2× stake each)`,
       payouts?.length === winners.length && winners.every((w) => payouts.some((p) => p.player_id === w.p.id && p.delta === 2 * w.stake)), payouts);
+
+    if (ONE_ROUND) {
+      // ---------- report, then stop (no round 2) ----------
+      const fin = await state();
+      console.log('\n================ ROUND REPORT ================');
+      console.log(`case: ${fin.case?.title} (${fin.case?.id})`);
+      console.log(`A: ${fin.case?.interpretationA}\nB: ${fin.case?.interpretationB}`);
+      console.log(`clue side A (alice): ${CLUE}\nclue side B (bob):   ${BOB_CLUE}`);
+      console.log(`turns completed: ${fin.round.turnsCompleted}/${fin.round.maxTurns}`);
+      console.log('\n-- tick timings (ticks that ran AI or changed phase) --');
+      for (const l of tickLog) console.log(`${l.at}  ${String(l.ms).padStart(6)} ms  ${l.from} → ${l.to}${l.ai ? `  ai=${l.ai}` : ''}`);
+      console.log('\n-- transcript --');
+      for (const m of fin.publicMessages) console.log(`[${m.sequence}] ${m.stage}${m.debateTurn ? ` #${m.debateTurn}` : ''} ${m.side}: ${m.text}`);
+      console.log('\n-- verdict JSON --');
+      console.log(JSON.stringify(fin.round.verdict, null, 2));
+      console.log(failures === 0 ? '\nALL CHECKS PASSED (one round)' : `\n${failures} CHECK(S) FAILED`);
+      if (failures) process.exitCode = 1;
+      return;
+    }
     const adv = await Promise.all([
       call('POST', '/api/admin/advance', { admin: true, body: { expectedPhase: 'RESULTS' } }),
       call('POST', '/api/admin/advance', { admin: true, body: { expectedPhase: 'RESULTS' } }),

@@ -283,6 +283,7 @@ export async function runAiStep(roundId: string, phase: Phase): Promise<RunAiRes
     let message: PublicArgument | null = null;
     let verdict: Record<string, unknown> | null = null;
     let phaseDone: boolean;
+    let telemetry: { model?: string; latencyMs?: number; inputTokens?: number; outputTokens?: number; attempts?: number } | undefined;
 
     if (phase === 'OPENINGS') {
       const side = nextOpeningSide(state);
@@ -291,6 +292,7 @@ export async function runAiStep(roundId: string, phase: Phase): Promise<RunAiRes
       if (!step.ok) return await failStep(roundId, phase, step.error);
       next = step.state;
       message = step.argument;
+      telemetry = step.telemetry;
       phaseDone = nextOpeningSide(next) === null;
     } else if (phase === 'DEBATE') {
       if (turnsOf(state) >= state.maxTurns) return await finishWithoutCall(roundId, owner, phase, state);
@@ -305,6 +307,7 @@ export async function runAiStep(roundId: string, phase: Phase): Promise<RunAiRes
       }
       next = step.state;
       message = step.argument;                          // NOT step.private / step.telemetry: server-only
+      telemetry = step.telemetry;
       phaseDone = turnsOf(next) >= next.maxTurns;
     } else {
       // JUDGING. Judge isolation is enforced inside the engine: it sees only the public scenario,
@@ -321,8 +324,13 @@ export async function runAiStep(roundId: string, phase: Phase): Promise<RunAiRes
         complete: step.complete,
         turnsCompleted: step.turnsCompleted,
       };
+      telemetry = step.telemetry;
       phaseDone = true;
     }
+    // Server log only (never sent to clients): one line per successful model call.
+    console.log(`[ai] ${phase}${message ? ` ${message.stage}:${message.side}${message.debateTurn ? `#${message.debateTurn}` : ''}` : ' judge'} ` +
+      `${telemetry?.latencyMs ?? '?'}ms model=${telemetry?.model ?? '?'} tokens=${telemetry?.inputTokens ?? '?'}/${telemetry?.outputTokens ?? '?'}` +
+      `${telemetry?.attempts !== undefined ? ` attempts=${telemetry.attempts}` : ''}`);
 
     // ---------- Commit (state CAS + public line/verdict + round status, one transaction) ----------
     const committed = await commit(roundId, owner, phase, state.revision, next, message, verdict, phaseDone);

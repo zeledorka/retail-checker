@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { isAdmin } from '@/lib/supabase/auth';
 import { cancelRound } from '@/lib/game/engine';
 import { fail, toErrorResponse } from '@/lib/game/errors';
+import type { CancelResponse } from '@/types/game';
 
 const Body = z.object({ roundId: z.string().uuid() });
 
@@ -14,7 +15,7 @@ export async function POST(req: Request) {
   if (!parsed.success) return fail('BAD_REQUEST', 400);
   try {
     const refunded = await cancelRound(parsed.data.roundId);
-    return NextResponse.json({ cancelled: true, refunded });
+    return NextResponse.json<CancelResponse>({ cancelled: true, refunded });
   } catch (e) {
     return toErrorResponse(e);
   }

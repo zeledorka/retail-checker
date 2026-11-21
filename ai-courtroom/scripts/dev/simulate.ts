@@ -9,6 +9,7 @@
  * RESETS THE ACTIVE GAME. Creates 5 anonymous Supabase users per run. Full game takes ~5-6 minutes.
  * Prints PASS/FAIL per check, exits 1 on any FAIL.
  */
+/* eslint-disable @typescript-eslint/no-explicit-any -- test harness: inspects arbitrary JSON responses, incl. malformed ones */
 import { createClient } from '@supabase/supabase-js';
 
 const BASE = process.env.BASE_URL ?? 'http://localhost:3000';
@@ -46,6 +47,14 @@ async function call(method: string, path: string, opts: { token?: string; admin?
 const tick = () => call('POST', '/api/admin/tick', { admin: true });
 const state = (token?: string) => call('GET', '/api/state', { token }).then((r) => r.body);
 const errCode = (r: Res) => r.body?.error?.code;
+
+/** An anonymous Supabase user that never calls /api/join (for NOT_JOINED checks). */
+async function signInOnly(): Promise<string> {
+  const sb = createClient(URL_!, PUB!, { auth: { persistSession: false, autoRefreshToken: false } });
+  const { data, error } = await sb.auth.signInAnonymously();
+  if (error || !data.session) throw new Error(`anonymous sign-in failed: ${error?.message}`);
+  return data.session.access_token;
+}
 
 type Player = { name: string; token: string; id: string };
 async function newPlayer(name: string): Promise<Player> {
@@ -143,6 +152,11 @@ async function main() {
   bets.push({ p: alice, side: 'A', stake: 20 }, { p: bob, side: 'B', stake: 30 });
   const b3 = await call('POST', '/api/bet', { token: alice.token, body: { roundId, side: 'B', stake: 5 } });
   check('second bet from same player → ALREADY_BET', b3.status === 409 && errCode(b3) === 'ALREADY_BET', b3.body);
+  const huge = await call('POST', '/api/bet', { token: carol.token, body: { roundId, side: 'A', stake: 3e9 } });
+  check('stake 3e9 (above the 1,000,000 cap) → 400 BAD_REQUEST', huge.status === 400 && errCode(huge) === 'BAD_REQUEST', huge.body);
+  const ghost = await signInOnly();
+  const gb = await call('POST', '/api/bet', { token: ghost, body: { roundId, side: 'A', stake: 5 } });
+  check('never-joined player bets → 403 NOT_JOINED', gb.status === 403 && errCode(gb) === 'NOT_JOINED', gb.body);
   const over = await call('POST', '/api/bet', { token: carol.token, body: { roundId, side: 'A', stake: 101 } });
   check('stake above balance (101 of 100) → INSUFFICIENT_TOKENS', over.status === 409 && errCode(over) === 'INSUFFICIENT_TOKENS', over.body);
 
@@ -168,6 +182,10 @@ async function main() {
 
   // ---------- OPENINGS: clue window ----------
   await tickUntil(at(1, ['OPENINGS', 'DEBATE']), 'OPENINGS r1');
+  const ghostInj = await call('POST', '/api/inject', { token: await signInOnly(), body: { roundId, text: 'never joined' } });
+  check('never-joined player injects → 403 NOT_JOINED', ghostInj.status === 403 && errCode(ghostInj) === 'NOT_JOINED', ghostInj.body);
+  const cancel404 = await call('POST', '/api/admin/cancel', { admin: true, body: { roundId: '00000000-0000-0000-0000-000000000000' } });
+  check('cancel unknown round → 404 BAD_REQUEST (not 500)', cancel404.status === 404 && errCode(cancel404) === 'BAD_REQUEST', cancel404.body);
   const noBet = await call('POST', '/api/inject', { token: carol.token, body: { roundId, text: 'I never bet' } });
   check('inject with no bet → NO_BET', noBet.status === 409 && errCode(noBet) === 'NO_BET', noBet.body);
   const tooLong = await call('POST', '/api/inject', { token: alice.token, body: { roundId, text: 'x'.repeat(201) } });

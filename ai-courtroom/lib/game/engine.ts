@@ -16,7 +16,7 @@ import {
 import { getActiveGame } from '@/lib/game/state';
 import { GameError } from '@/lib/game/errors';
 import { MAX_TURNS } from '@/lib/game/constants';
-import type { AdvanceResponse, Phase, RunAiResponse, Side } from '@/types/game';
+import type { AdvanceResponse, Phase, RunAiResponse, Side, TickResponse } from '@/types/game';
 
 /* ==========================================================================================
  * 1. CONFIGURATION: the shape of a round. Change timings here, nowhere else.
@@ -204,7 +204,7 @@ export async function advance(expected: Phase): Promise<AdvanceResponse> {
  * Autopilot: the admin page (or scripts/dev/autopilot.ts) calls this every ~1s. Each call does at most ONE thing:
  * one AI call, one phase change, or nothing. Overlapping calls are safe (lease + compare-and-set everywhere).
  */
-export async function tick(): Promise<AdvanceResponse & { ai?: RunAiResponse }> {
+export async function tick(): Promise<TickResponse> {
   const game = await getActiveGame();
   if (game.status !== 'IN_PROGRESS' || !game.current_round_id) return { changed: false, phase: null };
 

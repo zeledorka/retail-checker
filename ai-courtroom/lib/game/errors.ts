@@ -18,6 +18,14 @@ const KNOWN_DB_CODES: ErrorCode[] = [
   'INJECTION_CLOSED', 'NO_BET', 'BAD_REQUEST', 'NO_CASES_LEFT',
 ];
 
+// SQL codes that need a different API code and/or HTTP status than the default 409.
+// Checked BEFORE KNOWN_DB_CODES. ROUND_NOT_FOUND / NO_VERDICT are internal SQL names, not API codes.
+const SPECIAL_DB_CODES: Record<string, { code: ErrorCode; status: number; message: string }> = {
+  NOT_JOINED: { code: 'NOT_JOINED', status: 403, message: 'Join the game first (POST /api/join)' },
+  ROUND_NOT_FOUND: { code: 'BAD_REQUEST', status: 404, message: 'Round not found' },
+  NO_VERDICT: { code: 'AI_NOT_DONE', status: 409, message: 'No verdict stored yet' },
+};
+
 
 // Turn a Supabase/Postgres error into a friendly API error.
 export function fromDbError(e: { code?: string; message: string }) {
@@ -25,6 +33,12 @@ export function fromDbError(e: { code?: string; message: string }) {
   // e.g. the same player double-taps "Bet". The database rejected the second one.
   if (e.code === '23505') {
     return fail(e.message.includes('injections') ? 'ALREADY_INJECTED' : 'ALREADY_BET', 409);
+  }
+
+  const special = Object.keys(SPECIAL_DB_CODES).find((k) => e.message.includes(k));
+  if (special) {
+    const s = SPECIAL_DB_CODES[special];
+    return fail(s.code, s.status, s.message);
   }
 
   // Find the error code from our list above, and return the error message corresponding.

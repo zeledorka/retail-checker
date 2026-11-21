@@ -7,7 +7,7 @@ import { fail, fromDbError } from '@/lib/game/errors';
 const Body = z.object({
   roundId: z.string().uuid(),                 // must look like a UUID
   side: z.enum(['A', 'B']),                    // only these two strings allowed
-  stake: z.number().int().positive(),          // whole number > 0 (balance is checked in SQL)
+  stake: z.number().int().positive().max(1_000_000), // whole number 1..1,000,000 (balance is checked in SQL; cap avoids int overflow)
 });
 
 export async function POST(req: Request) {

@@ -79,6 +79,14 @@ export type RunAiResponse = {
   message?: PublicMessage['text'];
   error?: string;
 };
+/** POST /api/admin/tick: one autopilot step (a phase change and/or at most one AI call). */
+export type TickResponse = AdvanceResponse & { ai?: RunAiResponse };
+/** GET /api/leaderboard — sorted by tokens, then correctPicks. */
+export type LeaderboardResponse = { players: LeaderboardEntry[] };
+/** POST /api/admin/reset */
+export type ResetResponse = { gameId: string };
+/** POST /api/admin/cancel — refunded = number of players whose stake was returned (0 on a repeat call). */
+export type CancelResponse = { cancelled: true; refunded: number };
 
 export type ErrorCode =
   | 'UNAUTHENTICATED' | 'NOT_JOINED' | 'BAD_REQUEST' | 'BETTING_CLOSED' | 'ALREADY_BET'

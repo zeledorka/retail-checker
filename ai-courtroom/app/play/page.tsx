@@ -18,6 +18,7 @@ import { SuggestionBox } from "@/components/SuggestionBox";
 import { Podium, rankOf } from "@/components/Leaderboard";
 import { AgentIcon, AgentTag, SIDE } from "@/components/sides";
 import { MockSwitcher } from "@/components/MockSwitcher";
+import { ReconnectingPill } from "@/components/ReconnectingPill";
 
 export default function PlayPage() {
   const { state, serverOffset, loading, error, refetch } = useGameState({ asPlayer: true });
@@ -25,12 +26,14 @@ export default function PlayPage() {
 
   let body: React.ReactNode;
   if (!player.ready || (loading && !state)) body = <Splash />;
+  // Full-screen error only if we have NEVER had a good state; otherwise keep showing the last one + a pill.
   else if (!state) body = <ErrorScreen message={error ?? "Can't load the game"} onRetry={refetch} />;
   else if (!state.me) body = <JoinScreen initial={player.nickname ?? ""} onJoined={async (n) => { player.remember(n); await refetch(); }} />;
-  else body = <Game state={state} offset={serverOffset} error={error} refetch={refetch} />;
+  else body = <Game state={state} offset={serverOffset} refetch={refetch} />;
 
   return (
     <main className="play-root mx-auto flex w-full max-w-md flex-1 flex-col">
+      <ReconnectingPill show={!!error && !!state} />
       {body}
       {USE_MOCK && <MockFab onChange={refetch} />}
     </main>
@@ -58,6 +61,7 @@ function ErrorScreen({ message, onRetry }: { message: string; onRetry: () => voi
       <div className="grid gap-4">
         <Logo />
         <p className="card p-4 font-black text-agent-a">📡 {message}</p>
+        <p className="text-sm font-bold text-white/70">Retrying automatically…</p>
         <button type="button" onClick={onRetry} className="btn-chunky bg-white py-3 text-xl text-court">Try again</button>
       </div>
     </div>
@@ -94,7 +98,7 @@ function JoinScreen({ initial, onJoined }: { initial: string; onJoined: (nicknam
 
 // ---------------------------------------------------------------------------------------------------------------------
 
-function Game({ state, offset, error, refetch }: { state: UiGameState; offset: number; error: string | null; refetch: () => Promise<void> }) {
+function Game({ state, offset, refetch }: { state: UiGameState; offset: number; refetch: () => Promise<void> }) {
   const me = state.me!;
   const r = state.round;
   const { expired } = useCountdown(r?.phaseEndsAt, offset);
@@ -115,7 +119,6 @@ function Game({ state, offset, error, refetch }: { state: UiGameState; offset: n
         {/* No countdown once the round is over: the next round starts when the host says so. */}
         {!roundOver && <Countdown deadline={r?.phaseEndsAt} start={r?.phaseStartedAt} offset={offset} size={42} />}
       </header>
-      {error && <p className="bg-agent-a px-3 py-1 text-center text-sm font-black">📡 Reconnecting… ({error})</p>}
 
       <section key={state.phase} className="animate-slide-up flex flex-1 flex-col gap-4 p-4">
         {state.phase === "lobby" && <Waiting title="You're in!" text="Waiting for the host to start…" emoji="🧑‍⚖️" />}

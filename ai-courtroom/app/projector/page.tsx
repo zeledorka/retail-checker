@@ -15,6 +15,7 @@ import { Podium } from "@/components/Leaderboard";
 import { AgentIcon, PHASE_LABEL, SIDE } from "@/components/sides";
 import { HostDock, UnlockDialog } from "@/components/HostDock";
 import { JoinQr, useJoinUrl } from "@/components/JoinQr";
+import { ReconnectingPill } from "@/components/ReconnectingPill";
 
 const IDLE_MS = 3000;
 /** MAXIMUM length of the projector's "Judge Verdict" screen before it moves on to "Winner and Leaderboard". */
@@ -119,8 +120,9 @@ export default function ProjectorPage() {
   const canDock = !displayOnly;
   return (
     <main className={`fixed inset-0 overflow-hidden ${idle ? "cursor-none" : ""}`}>
-      <Courtroom state={state} offset={serverOffset} joinUrl={joinUrl} joinFull={joinFull} results={results} />
-      {error && <p className="fixed left-1/2 top-2 -translate-x-1/2 rounded-full bg-agent-a px-4 py-1 text-sm font-black">📡 Reconnecting…</p>}
+      <Courtroom state={state} offset={serverOffset} joinUrl={joinUrl} joinFull={joinFull} results={results} error={error} onRetry={refetch} />
+      {/* Last good state keeps rendering; this pill is the only sign of a failing poll. */}
+      <ReconnectingPill show={!!error && !!state} big />
 
       {/* H hides the dock but keeps it mounted, so a running autopilot doesn't stop. */}
       {canDock && adm.secret && (
@@ -140,9 +142,26 @@ export default function ProjectorPage() {
 
 // ---------------------------------------------------------------------------------------------------------------------
 
-function Courtroom({ state, offset, joinUrl, joinFull, results }: { state: UiGameState | null; offset: number; joinUrl: string; joinFull: string | null; results: ResultsStage }) {
+function Courtroom({ state, offset, joinUrl, joinFull, results, error, onRetry }: {
+  state: UiGameState | null; offset: number; joinUrl: string; joinFull: string | null; results: ResultsStage;
+  error: string | null; onRetry: () => void;
+}) {
   if (!state) {
-    return <div className="grid h-full place-items-center"><Title /></div>;
+    // Never had a good state: title while loading, a full (but calm) error screen if the first polls fail.
+    return (
+      <div className="grid h-full place-items-center text-center">
+        <div>
+          <Title />
+          {error && (
+            <div className="mt-8 grid justify-items-center gap-3">
+              <p className="card px-8 py-4 text-3xl font-black text-agent-a">📡 {error}</p>
+              <p className="text-xl font-bold text-white/70">Retrying automatically…</p>
+              <button type="button" onClick={onRetry} className="btn-chunky bg-white px-8 py-3 text-2xl text-court">Try again now</button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
   }
   const r = state.round;
   // Header title + timer follow the results sub-screen; the leaderboard has no timer (waits for the host).

@@ -43,7 +43,11 @@ type BStateResponse = {
   };
   case: null | { id: string; scenario: string; imageUrl: string; hypothesisA: string; hypothesisB: string; evidence: string[]; title?: string };
   publicMessages: { id: string; side: BSide; text: string; stage: "opening" | "rebuttal" | "final"; ordinal: number; createdAt: string }[];
-  me: null | { nickname: string; tokens: number; bet: { side: BSide; stake: number } | null; injections: { window: 1 | 2; text: string }[] };
+  me: null | {
+    nickname: string; tokens: number; bet: { side: BSide; stake: number } | null; injections: { window: 1 | 2; text: string }[];
+    // Settlement fields we asked Dev 3 for (TODO: confirm against backend; not returned today):
+    roundDelta?: number | null; tokensBefore?: number | null; refunded?: boolean;
+  };
   leaderboard: { nickname: string; tokens: number; correctPicks: number }[];
 };
 
@@ -88,10 +92,12 @@ export function adaptState(b: BStateResponse): UiGameState {
     tokens: b.me.tokens,
     bet: b.me.bet,
     suggestion: b.me.injections[0] && b.me.bet ? { side: b.me.bet.side, text: b.me.injections[0].text } : null,
-    // Derived from the payout rule in settle_round (winner gets 2x stake back) / cancel_round (refund).
-    // TODO: confirm against backend; ideally it returns me.roundDelta.
-    roundDelta: b.me.bet && revealed ? (b.me.bet.side === r!.winner ? b.me.bet.stake : -b.me.bet.stake) : b.me.bet && phase === "cancelled" ? 0 : null,
-    refunded: !!b.me.bet && phase === "cancelled",
+    // Payouts are NEVER computed on the client. Only pass through what the server returns; when it doesn't,
+    // /play falls back to (balance now - balance seen before the round), see lib/useRoundBaseline.ts.
+    // TODO: confirm with Dev 3 that state returns me.roundDelta / me.tokensBefore / me.refunded.
+    roundDelta: b.me.roundDelta ?? null,
+    tokensBefore: b.me.tokensBefore ?? null,
+    refunded: b.me.refunded ?? (!!b.me.bet && phase === "cancelled"),
   };
   const myName = b.me?.nickname;
   const leaderboard: UiLeaderboardEntry[] = b.leaderboard.map((e) => ({ ...e, isMe: e.nickname === myName }));

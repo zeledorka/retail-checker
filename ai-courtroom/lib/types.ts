@@ -72,8 +72,10 @@ export type UiMe = {
   bet: UiBet | null;
   /** The player's own accepted suggestion this round (one per round). Side = the side they bet on. */
   suggestion: { side: Side; text: string } | null;
-  /** Token change this round once settled: +stake on win, -stake on loss, 0 when refunded. null until settled. */
+  /** SERVER-provided token change this round once settled (+ win, - loss, 0 refunded). null if not exposed / not settled. */
   roundDelta: number | null;
+  /** SERVER-provided balance before this round (before the bet). null if not exposed. */
+  tokensBefore: number | null;
   refunded: boolean;
 };
 

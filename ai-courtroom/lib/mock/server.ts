@@ -28,6 +28,8 @@ type MockPlayer = {
   settledRound: number; // last round whose payout/refund was applied
   delta: number | null;
   refunded: boolean;
+  /** Balance before this round's bet (what the real server should expose as me.tokensBefore). */
+  before?: number | null;
 };
 
 type MockStore = {
@@ -147,6 +149,7 @@ function buildState(s: MockStore, playerId: string | null, now: number): UiGameS
         nickname: p.nickname, tokens: p.tokens,
         bet: current ? p.bet : null, suggestion: current ? p.suggestion : null,
         roundDelta: current && p.settledRound === s.roundNumber ? p.delta : null,
+        tokensBefore: current && p.bet ? p.before ?? null : null,
         refunded: !!(current && p.refunded),
       }
     : null;
@@ -218,6 +221,7 @@ export async function mockBet(playerId: string, side: Side, stake: number) {
   if (!state.round?.bettingOpen || simNow() > (state.round.phaseEndsAt ?? 0)) throw new ApiError("BETTING_CLOSED", "Betting is closed", 409);
   if (p.round === s.roundNumber && p.bet) throw new ApiError("ALREADY_BET", "You already placed a bet", 409);
   if (stake > p.tokens) throw new ApiError("INSUFFICIENT_TOKENS", "Not enough tokens", 409);
+  p.before = p.tokens;
   p.tokens -= stake;
   p.round = s.roundNumber;
   p.bet = { side, stake };
@@ -301,13 +305,14 @@ export async function mockAdminCancel() {
 
 export type MockPreset =
   | "lobby" | "reveal" | "betting" | "openings" | "debate-2" | "debate-5" | "debate-8"
-  | "judging" | "results-win" | "results-lose" | "incomplete" | "cancelled";
+  | "judging" | "results-win" | "results-lose" | "results-nobet" | "incomplete" | "cancelled";
 
 export const MOCK_PRESETS: { id: MockPreset; label: string }[] = [
   { id: "lobby", label: "Lobby" }, { id: "reveal", label: "Case reveal" }, { id: "betting", label: "Betting" },
   { id: "openings", label: "Openings" }, { id: "debate-2", label: "Debate T2" }, { id: "debate-5", label: "Debate T5" },
   { id: "debate-8", label: "Debate T8" }, { id: "judging", label: "Judging" }, { id: "results-win", label: "Results: win" },
-  { id: "results-lose", label: "Results: lose" }, { id: "incomplete", label: "Incomplete verdict" }, { id: "cancelled", label: "Cancelled" },
+  { id: "results-lose", label: "Results: lose" },
+  { id: "results-nobet", label: "Results: no bet" }, { id: "incomplete", label: "Incomplete verdict" }, { id: "cancelled", label: "Cancelled" },
 ];
 
 /** Players without a bet get one, so win/lose screens have something to show. */
@@ -316,6 +321,7 @@ function ensureBets(s: MockStore) {
     if (p.round === s.roundNumber && p.bet) continue;
     const stake = Math.min(25, p.tokens);
     if (stake <= 0) continue;
+    p.before = p.tokens;
     p.tokens -= stake; p.round = s.roundNumber; p.bet = { side: "A", stake }; p.suggestion = null; p.settledRound = s.roundNumber - 1;
   }
 }
@@ -335,15 +341,16 @@ export function mockApplyPreset(preset: MockPreset, freeze: boolean) {
     return;
   }
   // A new round for every jump backwards keeps bets/settlement consistent.
-  const needsNewRound = s.t0 === null || s.cancelledAt !== null || phaseAt(s, elapsedOf(s, simNow())) === "results";
+  // "results-nobet" always gets a fresh round so nobody has a bet in it (late joiner / spectator view).
+  const needsNewRound = preset === "results-nobet" || s.t0 === null || s.cancelledAt !== null || phaseAt(s, elapsedOf(s, simNow())) === "results";
   if (needsNewRound) startRound(s);
   s.variant = preset === "incomplete" ? "incomplete" : "normal";
   s.frozenElapsed = freeze ? 0 : null;
   const at: Record<Exclude<MockPreset, "lobby">, number> = {
     reveal: 1, betting: T.betting + 0.5, openings: T.openings + 0.5, "debate-2": 43, "debate-5": 60, "debate-8": 77,
-    judging: T.judging + 1, "results-win": T.results + 0.2, "results-lose": T.results + 0.2, incomplete: T.results + 0.2, cancelled: 50,
+    judging: T.judging + 1, "results-win": T.results + 0.2, "results-lose": T.results + 0.2, "results-nobet": T.results + 0.2, incomplete: T.results + 0.2, cancelled: 50,
   };
-  if (preset.startsWith("results") || preset === "incomplete" || preset === "cancelled") ensureBets(s);
+  if (preset === "results-win" || preset === "results-lose" || preset === "incomplete" || preset === "cancelled") ensureBets(s);
   if (preset === "results-win" || preset === "incomplete") s.winner = majoritySide(s);
   if (preset === "results-lose") s.winner = majoritySide(s) === "A" ? "B" : "A";
   jumpTo(s, at[preset], freeze);

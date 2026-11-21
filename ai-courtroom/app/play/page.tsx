@@ -7,15 +7,16 @@ import { useCountdown } from "@/lib/useCountdown";
 import type { Side, UiGameState } from "@/lib/types";
 import { Countdown } from "@/components/Countdown";
 import { PhaseBadge, PhaseBanner } from "@/components/PhaseBadge";
-import { TokenBadge, Delta } from "@/components/TokenBadge";
+import { TokenBadge, Delta, CountUp } from "@/components/TokenBadge";
+import { useRoundBaseline } from "@/lib/useRoundBaseline";
 import { CaseCard } from "@/components/CaseCard";
 import { PositionsPanel } from "@/components/PositionsPanel";
 import { BetPanel } from "@/components/BetPanel";
 import { Transcript } from "@/components/Transcript";
 import { SuggestionBox } from "@/components/SuggestionBox";
-import { VerdictPanel } from "@/components/VerdictPanel";
+
 import { Podium, rankOf } from "@/components/Leaderboard";
-import { AgentIcon, SIDE } from "@/components/sides";
+import { AgentIcon, AgentTag, SIDE } from "@/components/sides";
 import { MockSwitcher } from "@/components/MockSwitcher";
 
 export default function PlayPage() {
@@ -97,6 +98,8 @@ function Game({ state, offset, error, refetch }: { state: UiGameState; offset: n
   const me = state.me!;
   const r = state.round;
   const { expired } = useCountdown(r?.phaseEndsAt, offset);
+  const baseline = useRoundBaseline(state);
+  const roundOver = state.phase === "results" || state.phase === "cancelled";
 
   const onBet = async (side: Side, stake: number) => { await placeBet(r!.id, side, stake); await refetch(); };
   const onSend = async (text: string) => { await sendSuggestion(r!.id, r!.rawPhase, text); await refetch(); };
@@ -109,7 +112,8 @@ function Game({ state, offset, error, refetch }: { state: UiGameState; offset: n
           <PhaseBadge phase={state.phase} className="mt-0.5 !text-[11px]" />
         </div>
         <TokenBadge tokens={me.tokens} />
-        <Countdown deadline={r?.phaseEndsAt} start={r?.phaseStartedAt} offset={offset} size={48} />
+        {/* No countdown once the round is over: the next round starts when the host says so. */}
+        {!roundOver && <Countdown deadline={r?.phaseEndsAt} start={r?.phaseStartedAt} offset={offset} size={48} />}
       </header>
       {error && <p className="bg-agent-a px-3 py-1 text-center text-sm font-black">📡 Reconnecting… ({error})</p>}
 
@@ -160,17 +164,8 @@ function Game({ state, offset, error, refetch }: { state: UiGameState; offset: n
           </>
         )}
 
-        {state.phase === "results" && <Results state={state} />}
-
-        {state.phase === "cancelled" && (
-          <div className="grid gap-4 text-center">
-            <PhaseBanner phase="cancelled" />
-            <div className="card p-5 text-lg font-black">
-              {me.bet ? <>💸 Your {me.bet.stake} tokens were refunded.</> : <>No tokens were lost. Hang tight for the next round.</>}
-            </div>
-            <p className="font-bold text-white/80">Waiting for the next round…</p>
-          </div>
-        )}
+        {/* Stays up until the SERVER moves to a new round / lobby: no local timer returns to betting. */}
+        {(state.phase === "results" || state.phase === "cancelled") && <RoundOver state={state} baseline={baseline} />}
       </section>
     </>
   );
@@ -201,24 +196,69 @@ function Waiting({ title, text, emoji }: { title: string; text: string; emoji: s
   );
 }
 
-function Results({ state }: { state: UiGameState }) {
+/** End of round (results or cancelled): outcome, token summary, waiting bar, compact verdict. */
+function RoundOver({ state, baseline }: { state: UiGameState; baseline: number | null }) {
   const me = state.me!;
   const v = state.verdict;
+  const cancelled = state.phase === "cancelled";
+  if (!cancelled && !v) return <Waiting title="Settling the bets" text="Counting the tokens…" emoji="🪙" />;
+
+  const bet = me.bet;
+  const won = !cancelled && bet && v ? bet.side === v.winner : null;
+  const outcome = cancelled ? (bet ? "refunded" : "cancelled") : !bet ? "nobet" : won ? "win" : "lose";
+  const HEAD = {
+    win: { text: "YOU WIN! 🎉", sub: `Agent ${v?.winner} took the case`, bg: "bg-win" },
+    lose: { text: "YOU LOSE 😵", sub: `Agent ${v?.winner} took the case`, bg: "bg-agent-a" },
+    refunded: { text: "REFUNDED 💸", sub: "The round was cancelled", bg: "bg-gold text-ink" },
+    cancelled: { text: "Round cancelled", sub: "No bet placed, nothing lost", bg: "bg-white/15" },
+    nobet: { text: "No bet placed", sub: "You watched this one from the gallery", bg: "bg-white/15" },
+  }[outcome];
+
+  // Token summary from SERVER data only: server delta/before if exposed, else (balance now - balance seen before the round).
+  const before = me.tokensBefore ?? baseline;
+  const delta = me.roundDelta ?? (before !== null ? me.tokens - before : bet ? null : 0);
   const rank = rankOf(state.leaderboard);
-  if (!v) return <Waiting title="Settling the bets" text="Counting the tokens…" emoji="🪙" />;
-  const won = me.bet ? me.bet.side === v.winner : null;
+
   return (
     <div className="grid gap-4">
-      <div className={`animate-pop rounded-3xl p-6 text-center shadow-[0_8px_0_rgba(0,0,0,0.3)] ${won === null ? "bg-white/15" : won ? "bg-win" : "bg-agent-a"}`}>
-        <p className="text-5xl font-black drop-shadow-[0_4px_0_rgba(0,0,0,0.25)]">{won === null ? "Verdict is in" : won ? "YOU WIN! 🎉" : "YOU LOSE 😵"}</p>
-        {me.roundDelta !== null && <div className="mt-3"><Delta value={me.roundDelta} className="text-3xl" /></div>}
-        <div className="mt-3 flex flex-wrap items-center justify-center gap-3 font-black">
-          <span>Balance</span><TokenBadge tokens={me.tokens} />
-          {rank && <span className="rounded-full bg-white/20 px-3 py-1">#{rank} of {state.leaderboard.length}</span>}
-        </div>
-        {won === null && <p className="mt-2 font-bold">You didn&apos;t bet this round.</p>}
+      <div className={`animate-pop rounded-3xl p-5 text-center shadow-[0_8px_0_rgba(0,0,0,0.3)] ${HEAD.bg}`}>
+        <p className="text-5xl font-black drop-shadow-[0_4px_0_rgba(0,0,0,0.2)]">{HEAD.text}</p>
+        <p className="mt-1 text-lg font-bold opacity-90">{HEAD.sub}</p>
       </div>
-      <VerdictPanel v={v} />
+
+      <div className="card animate-slide-up p-5 text-center" style={{ animationDelay: "150ms" }}>
+        <p className="text-sm font-black uppercase tracking-widest text-court">Your tokens</p>
+        <p className="mt-1 flex items-center justify-center gap-2 text-7xl font-black leading-none">
+          <span className="text-5xl" aria-hidden>🪙</span>
+          <CountUp from={before ?? me.tokens} to={me.tokens} />
+        </p>
+        <div className="mt-3 flex flex-wrap items-center justify-center gap-2 font-black">
+          {outcome === "refunded" ? <span className="animate-pop rounded-full bg-gold px-3 py-1 text-2xl text-ink">Refunded</span>
+            : delta !== null && <Delta value={delta} className="text-2xl" />}
+          {before !== null && before !== me.tokens && <span className="text-lg text-ink/60">{before} → {me.tokens}</span>}
+          {rank && <span className="rounded-full bg-court/10 px-3 py-1 text-lg">#{rank} of {state.leaderboard.length}</span>}
+        </div>
+        {me.tokens === 0 && <p className="mt-2 font-bold text-agent-a">Out of tokens! You can still watch and cheer.</p>}
+      </div>
+
+      <div className="animate-slide-up grid gap-2" style={{ animationDelay: "300ms" }} role="status">
+        <div className="waiting-bar" aria-hidden />
+        <p className="text-center font-black">Waiting for the host to start a new round...</p>
+      </div>
+
+      {v && (
+        <div className="card animate-slide-up p-4" style={{ animationDelay: "450ms" }}>
+          <div className="flex items-center gap-2 font-black">⚖️ Winner: <AgentTag side={v.winner} /></div>
+          {!v.complete && <p className="mt-2 text-sm font-black text-gold-dark">⏱️ Judged on {v.turnsCompleted} of {v.maxTurns} debate turns (cut short).</p>}
+          <p className="mt-2 font-bold">{v.summary ?? v.explanation}</p>
+          {v.summary && (
+            <details className="mt-2 text-sm font-semibold">
+              <summary className="cursor-pointer font-black text-court">Judge&apos;s full reasoning</summary>
+              <p className="mt-1">{v.explanation}</p>
+            </details>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -14,6 +14,7 @@ import { IncompleteNotice } from "@/components/VerdictPanel";
 import { Podium } from "@/components/Leaderboard";
 import { AgentIcon, PHASE_LABEL, SIDE } from "@/components/sides";
 import { HostDock, UnlockDialog } from "@/components/HostDock";
+import { JoinQr, useJoinUrl } from "@/components/JoinQr";
 
 const IDLE_MS = 3000;
 /** Length of the projector's "Judge Verdict" screen before it moves on to "Winner and Leaderboard". */
@@ -78,15 +79,16 @@ export default function ProjectorPage() {
   const { state, serverOffset, error, refetch } = useGameState({ asPlayer: false });
   const adm = useAdmin();
   const results = useResultsStage(state, serverOffset);
+  // Full join URL for the QR (NEXT_PUBLIC_JOIN_URL or <origin>/play); the text shows it without the protocol.
+  const joinFull = useJoinUrl();
+  const joinUrl = joinFull ? joinFull.replace(/^https?:\/\//, "") : "";
   const [displayOnly, setDisplayOnly] = useState(true); // safe default until the URL is read
-  const [joinUrl, setJoinUrl] = useState("");
   const [idle, setIdle] = useState(false);
   const [dockHidden, setDockHidden] = useState(false);
   const [unlocking, setUnlocking] = useState(false);
 
   useEffect(() => {
     setDisplayOnly(new URLSearchParams(window.location.search).get("view") === "display");
-    setJoinUrl(`${window.location.host}/play`);
   }, []);
 
   // Idle: fade the dock and hide the cursor; any mouse movement brings both back.
@@ -107,7 +109,7 @@ export default function ProjectorPage() {
   const canDock = !displayOnly;
   return (
     <main className={`fixed inset-0 overflow-hidden ${idle ? "cursor-none" : ""}`}>
-      <Courtroom state={state} offset={serverOffset} joinUrl={joinUrl} results={results} />
+      <Courtroom state={state} offset={serverOffset} joinUrl={joinUrl} joinFull={joinFull} results={results} />
       {error && <p className="fixed left-1/2 top-2 -translate-x-1/2 rounded-full bg-agent-a px-4 py-1 text-sm font-black">📡 Reconnecting…</p>}
 
       {canDock && adm.secret && !dockHidden && (
@@ -127,7 +129,7 @@ export default function ProjectorPage() {
 
 // ---------------------------------------------------------------------------------------------------------------------
 
-function Courtroom({ state, offset, joinUrl, results }: { state: UiGameState | null; offset: number; joinUrl: string; results: ResultsStage }) {
+function Courtroom({ state, offset, joinUrl, joinFull, results }: { state: UiGameState | null; offset: number; joinUrl: string; joinFull: string | null; results: ResultsStage }) {
   if (!state) {
     return <div className="grid h-full place-items-center"><Title /></div>;
   }
@@ -164,7 +166,7 @@ function Courtroom({ state, offset, joinUrl, results }: { state: UiGameState | n
       </header>
 
       <section key={`${state.phase}:${results.screen ?? ""}`} className="mt-4 min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        <Stage state={state} joinUrl={joinUrl} results={results} />
+        <Stage state={state} joinUrl={joinUrl} joinFull={joinFull} results={results} />
       </section>
     </div>
   );
@@ -179,17 +181,21 @@ function Title() {
   );
 }
 
-function Stage({ state, joinUrl, results }: { state: UiGameState; joinUrl: string; results: ResultsStage }) {
+function Stage({ state, joinUrl, joinFull, results }: { state: UiGameState; joinUrl: string; joinFull: string | null; results: ResultsStage }) {
   const r = state.round;
   const c = state.case;
   switch (state.phase) {
     case "lobby":
       return (
         <div className="grid h-full grid-rows-[auto_1fr] gap-6">
-          <div className="text-center">
-            <Title />
-            <p className="mt-6 inline-block rounded-3xl bg-white px-10 py-4 text-6xl font-black text-court shadow-[0_8px_0_rgba(0,0,0,0.3)]">Join at {joinUrl}</p>
-            <p className="mt-4 text-4xl font-black">👥 {state.playerCount} player{state.playerCount === 1 ? "" : "s"}</p>
+          {/* Title + join text on the left, big scannable QR on the right. */}
+          <div className="flex items-center justify-center gap-14">
+            <div className="min-w-0 text-center">
+              <Title />
+              <p className="mt-6 inline-block max-w-full break-all rounded-3xl bg-white px-8 py-3 text-5xl font-black text-court shadow-[0_8px_0_rgba(0,0,0,0.3)]">Join at {joinUrl}</p>
+              <p className="mt-4 text-4xl font-black">👥 {state.playerCount} player{state.playerCount === 1 ? "" : "s"}</p>
+            </div>
+            <JoinQr url={joinFull} size={300} className="shrink-0" />
           </div>
           <div className="flex flex-wrap content-start justify-center gap-3 overflow-hidden">
             {state.leaderboard.map((p, i) => (

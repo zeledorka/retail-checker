@@ -1,4 +1,0 @@
-RAILS_ENV=test rake db:migrate
-RAILS_ENV=test rake db:test:load
-
-bin/rails test $1

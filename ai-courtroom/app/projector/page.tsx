@@ -140,18 +140,25 @@ function Courtroom({ state, offset, joinUrl, results }: { state: UiGameState | n
     : state.phase === "results" ? null : { deadline: r?.phaseEndsAt, start: r?.phaseStartedAt };
   return (
     <div className="flex h-full flex-col px-7 pb-7 pt-4">
-      <header className="flex h-20 shrink-0 items-center justify-between gap-6">
-        <div className="flex items-center gap-3">
-          <span className="text-4xl" aria-hidden>⚖️</span>
-          <div>
-            <p className="text-2xl font-black leading-none">AI Courtroom</p>
-            {r && <p className="text-base font-bold text-white/70">Round {r.number}{state.game.maxRounds ? ` of ${state.game.maxRounds}` : ""} · join at {joinUrl}</p>}
+      {/* 1fr | auto | 1fr: equal side columns keep the title truly centred whatever is on the left/right. */}
+      <header className="grid h-20 shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-6">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="text-2xl" aria-hidden>⚖️</span>
+          <div className="min-w-0">
+            <p className="text-lg font-black leading-none">AI Courtroom</p>
+            {r && (
+              <p className="truncate text-sm font-bold text-white/70">
+                Round {r.number}{state.game.maxRounds ? ` of ${state.game.maxRounds}` : ""}
+                {/* Join link only between rounds (leaderboard / game over); hidden while a round is being played. */}
+                {(state.phase === "lobby" || results.screen === "leaderboard" || state.phase === "game_over") && <> · join at {joinUrl}</>}
+              </p>
+            )}
           </div>
         </div>
-        {state.phase !== "lobby" && (
-          <h1 key={title} className="animate-banner text-[clamp(2rem,2.6vw,3.1rem)] font-black drop-shadow-[0_4px_0_rgba(0,0,0,0.25)]">{title}</h1>
-        )}
-        <div className="flex w-24 justify-end">
+        {state.phase !== "lobby" ? (
+          <h1 key={title} className="animate-banner text-center text-[clamp(2rem,2.6vw,3.1rem)] font-black drop-shadow-[0_4px_0_rgba(0,0,0,0.25)]">{title}</h1>
+        ) : <span />}
+        <div className="flex justify-end">
           {timer && <Countdown deadline={timer.deadline} start={timer.start} offset={offset} size={92} />}
         </div>
       </header>

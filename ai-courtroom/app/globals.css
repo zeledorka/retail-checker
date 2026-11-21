@@ -1,0 +1,68 @@
+@import "tailwindcss";
+
+/* Kahoot-style theme tokens. Agent A = RED + triangle, Agent B = BLUE + diamond. */
+@theme {
+  --font-sans: var(--font-nunito), ui-rounded, system-ui, sans-serif;
+  --color-court: #46178f;
+  --color-court-dark: #25076b;
+  --color-court-light: #864cbf;
+  --color-agent-a: #e21b3c;
+  --color-agent-a-dark: #a8102a;
+  --color-agent-b: #1368ce;
+  --color-agent-b-dark: #0b4a95;
+  --color-gold: #ffa602;
+  --color-gold-dark: #c27c00;
+  --color-win: #26890c;
+  --color-win-dark: #1a5f08;
+  --color-ink: #1c1c28;
+
+  --animate-pop: pop 0.45s cubic-bezier(0.2, 1.6, 0.4, 1) both;
+  --animate-slide-up: slide-up 0.45s cubic-bezier(0.2, 1.2, 0.4, 1) both;
+  --animate-banner: banner 0.6s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+  --animate-float: float 3s ease-in-out infinite;
+  --animate-wiggle: wiggle 1.2s ease-in-out infinite;
+  --animate-shake: shake 0.4s ease-in-out both;
+
+  @keyframes pop { 0% { transform: scale(0.6); opacity: 0 } 100% { transform: scale(1); opacity: 1 } }
+  @keyframes slide-up { 0% { transform: translateY(24px); opacity: 0 } 100% { transform: translateY(0); opacity: 1 } }
+  @keyframes banner { 0% { transform: translateX(-30%) scale(0.8); opacity: 0 } 60% { transform: translateX(3%) scale(1.03); opacity: 1 } 100% { transform: none } }
+  @keyframes float { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-10px) } }
+  @keyframes wiggle { 0%, 100% { transform: rotate(-8deg) } 50% { transform: rotate(8deg) } }
+  @keyframes shake { 0%, 100% { transform: translateX(0) } 25% { transform: translateX(-6px) } 75% { transform: translateX(6px) } }
+}
+
+html, body { height: 100%; }
+body {
+  background: radial-gradient(1200px 800px at 15% -10%, #864cbf 0%, transparent 60%),
+    radial-gradient(1000px 700px at 110% 110%, #5f2db0 0%, transparent 55%), #46178f;
+  background-attachment: fixed;
+  color: white;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Chunky "pressable" button: thick bottom shadow that collapses on press. */
+.btn-chunky {
+  position: relative;
+  border-radius: 0.9rem;
+  font-weight: 900;
+  box-shadow: 0 6px 0 rgb(0 0 0 / 0.3);
+  transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+}
+.btn-chunky:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 0 rgb(0 0 0 / 0.3); filter: brightness(1.06); }
+.btn-chunky:active:not(:disabled) { transform: translateY(5px); box-shadow: 0 1px 0 rgb(0 0 0 / 0.3); }
+.btn-chunky:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-chunky:focus-visible { outline: 4px solid white; outline-offset: 3px; }
+
+.card { background: white; color: var(--color-ink); border-radius: 1.25rem; box-shadow: 0 6px 0 rgb(0 0 0 / 0.2); }
+
+/* Typewriter-ish reveal for the newest speech bubble. */
+.reveal-text { animation: reveal 1.6s steps(40, end) both; }
+@keyframes reveal { from { clip-path: inset(0 100% 0 0) } to { clip-path: inset(0 0 0 0) } }
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; }
+  .reveal-text { animation: none; }
+}

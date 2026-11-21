@@ -79,7 +79,11 @@ export type UiMe = {
   refunded: boolean;
 };
 
-export type UiLeaderboardEntry = { nickname: string; tokens: number; correctPicks: number; isMe?: boolean };
+export type UiLeaderboardEntry = {
+  nickname: string; tokens: number; correctPicks: number; isMe?: boolean;
+  /** Token change in the current round, only if the server exposes it. TODO: confirm against backend (not returned today). */
+  roundDelta?: number;
+};
 
 export type UiRound = {
   id: string;

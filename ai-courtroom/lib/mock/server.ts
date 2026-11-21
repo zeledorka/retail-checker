@@ -154,8 +154,19 @@ function buildState(s: MockStore, playerId: string | null, now: number): UiGameS
       }
     : null;
 
-  const humans = Object.entries(s.players).map(([id, x]) => ({ nickname: x.nickname, tokens: x.tokens, correctPicks: 0, isMe: id === playerId }));
-  const leaderboard = [...MOCK_BOTS.map((b) => ({ nickname: b.nickname, tokens: b.tokens, correctPicks: b.correctPicks })), ...humans]
+  // Per-round deltas once settled (results) so the projector podium can show them; bots settle like players do.
+  const settled = phase === "results";
+  const humans = Object.entries(s.players).map(([id, x]) => {
+    const d = settled && x.round === s.roundNumber && x.settledRound === s.roundNumber && x.delta !== null ? x.delta : undefined;
+    return { nickname: x.nickname, tokens: x.tokens, correctPicks: 0, isMe: id === playerId, ...(d !== undefined ? { roundDelta: d } : {}) };
+  });
+  const bots = MOCK_BOTS.map((b) => {
+    const d = b.side === s.winner ? b.stake : -b.stake;
+    return settled
+      ? { nickname: b.nickname, tokens: b.tokens + d, correctPicks: b.correctPicks + (d > 0 ? 1 : 0), roundDelta: d }
+      : { nickname: b.nickname, tokens: b.tokens, correctPicks: b.correctPicks };
+  });
+  const leaderboard = [...bots, ...humans]
     .sort((a, b) => b.tokens - a.tokens || b.correctPicks - a.correctPicks);
 
   return {

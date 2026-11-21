@@ -48,7 +48,7 @@ type BStateResponse = {
     // Settlement fields we asked Dev 3 for (TODO: confirm against backend; not returned today):
     roundDelta?: number | null; tokensBefore?: number | null; refunded?: boolean;
   };
-  leaderboard: { nickname: string; tokens: number; correctPicks: number }[];
+  leaderboard: { nickname: string; tokens: number; correctPicks: number; roundDelta?: number }[]; // roundDelta: TODO Dev 3
 };
 
 const PHASE_MAP: Record<BPhase, UiPhase> = {

@@ -10,8 +10,10 @@ import { PHASE_LABEL } from "./sides";
 type Toast = { id: number; text: string; kind: "ok" | "err" };
 type Action = "start" | "advance" | "ai" | "cancel";
 
-export function HostDock({ state, secret, onLock, refetch, idle }: {
+export function HostDock({ state, secret, onLock, refetch, idle, onSkipVerdict }: {
   state: UiGameState | null; secret: string; onLock: () => void; refetch: () => Promise<void>; idle: boolean;
+  /** Only passed while the projector shows the verdict screen. Client-side only, no API call. */
+  onSkipVerdict?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<Action | null>(null);
@@ -68,6 +70,11 @@ export function HostDock({ state, secret, onLock, refetch, idle }: {
               </div>
             )}
           </div>
+          {onSkipVerdict && (
+            <button type="button" onClick={onSkipVerdict} className="btn-chunky mt-2 w-full bg-gold py-2 text-xs text-ink !shadow-[0_3px_0_rgba(0,0,0,0.3)]">
+              Skip to leaderboard ⏭
+            </button>
+          )}
           {USE_MOCK && <div className="mt-3 border-t pt-2"><MockSwitcher onChange={refetch} /></div>}
           <p className="mt-2 text-[10px] font-bold text-ink/50">H: hide dock · auto-hides when idle</p>
         </div>

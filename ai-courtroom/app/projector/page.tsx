@@ -1,25 +1,75 @@
 "use client";
 // Projector: read-only 16:9 courtroom. Host dock is a fixed overlay rendered only after admin unlock
 // (press U, or click the bottom-right corner). ?view=display never shows the dock.
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useGameState } from "@/lib/useGameState";
 import { useAdmin } from "@/lib/useAdmin";
-import type { PublicArgument, Side, UiGameState } from "@/lib/types";
+import { useCountdown } from "@/lib/useCountdown";
+import type { CriterionScores, PublicArgument, Side, UiGameState, UiVerdict } from "@/lib/types";
 import { Countdown } from "@/components/Countdown";
-import { PhaseBanner } from "@/components/PhaseBadge";
 import { CaseCard } from "@/components/CaseCard";
 import { PositionCard, PositionsPanel } from "@/components/PositionsPanel";
 import { SpeechBubble, ThinkingBubble } from "@/components/SpeechBubble";
-import { IncompleteNotice, JudgeNotes, ScoreBars, WinnerBanner } from "@/components/VerdictPanel";
+import { IncompleteNotice } from "@/components/VerdictPanel";
 import { Podium } from "@/components/Leaderboard";
-import { AgentIcon, SIDE } from "@/components/sides";
+import { AgentIcon, PHASE_LABEL, SIDE } from "@/components/sides";
 import { HostDock, UnlockDialog } from "@/components/HostDock";
 
 const IDLE_MS = 3000;
+/** Length of the projector's "Judge Verdict" screen before it moves on to "Winner and Leaderboard". */
+const VERDICT_SCREEN_SECONDS = 15; // not exported: Next.js page files may only export the page + route config
+
+type ResultsStage = {
+  /** null outside a results phase that has a verdict. */
+  screen: "verdict" | "leaderboard" | null;
+  verdictStart: number | null;
+  verdictEndsAt: number | null;
+  skip: () => void;
+};
+
+/**
+ * Splits the server's results phase into two client-side sub-screens. The 15s is measured from the SERVER's results
+ * phase start (round.phaseStartedAt) + the measured clock offset, so a refresh resumes at the right point; if that is
+ * past 15s the leaderboard shows straight away. Never moves on from the leaderboard by itself: only a new server
+ * phase does. "Skip" is client-side only, remembered per round id for this tab.
+ */
+function useResultsStage(state: UiGameState | null, offset: number): ResultsStage {
+  const r = state?.round ?? null;
+  const roundId = r?.id ?? null;
+  const inResults = state?.phase === "results" && !!state.verdict;
+  const serverStart = inResults ? r?.phaseStartedAt ?? null : null;
+  const [fallbackStart, setFallbackStart] = useState<number | null>(null);
+  const [skipped, setSkipped] = useState(false);
+
+  useEffect(() => {
+    if (!inResults || !roundId) { setFallbackStart(null); setSkipped(false); return; }
+    setSkipped(sessionStorage.getItem(`aic:verdict-skip:${roundId}`) === "1");
+    if (serverStart !== null) return;
+    // TODO: ask Dev 3 for results phase start timestamp (falls back to when this tab first saw the results phase).
+    const key = `aic:results-seen:${roundId}`;
+    let seen = sessionStorage.getItem(key);
+    if (!seen) { seen = String(Date.now() + offset); sessionStorage.setItem(key, seen); }
+    setFallbackStart(Number(seen));
+    // offset is intentionally not a dependency: the first-seen time must not move as the offset is refined.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inResults, roundId, serverStart]);
+
+  const verdictStart = serverStart ?? fallbackStart;
+  const verdictEndsAt = verdictStart !== null ? verdictStart + VERDICT_SCREEN_SECONDS * 1000 : null;
+  const { expired } = useCountdown(verdictEndsAt, offset);
+  const skip = useCallback(() => {
+    if (roundId) sessionStorage.setItem(`aic:verdict-skip:${roundId}`, "1");
+    setSkipped(true);
+  }, [roundId]);
+
+  const screen = !inResults ? null : skipped || expired ? "leaderboard" : "verdict";
+  return { screen, verdictStart, verdictEndsAt, skip };
+}
 
 export default function ProjectorPage() {
   const { state, serverOffset, error, refetch } = useGameState({ asPlayer: false });
   const adm = useAdmin();
+  const results = useResultsStage(state, serverOffset);
   const [displayOnly, setDisplayOnly] = useState(true); // safe default until the URL is read
   const [joinUrl, setJoinUrl] = useState("");
   const [idle, setIdle] = useState(false);
@@ -49,11 +99,12 @@ export default function ProjectorPage() {
   const canDock = !displayOnly;
   return (
     <main className={`fixed inset-0 overflow-hidden ${idle ? "cursor-none" : ""}`}>
-      <Courtroom state={state} offset={serverOffset} joinUrl={joinUrl} />
+      <Courtroom state={state} offset={serverOffset} joinUrl={joinUrl} results={results} />
       {error && <p className="fixed left-1/2 top-2 -translate-x-1/2 rounded-full bg-agent-a px-4 py-1 text-sm font-black">📡 Reconnecting…</p>}
 
       {canDock && adm.secret && !dockHidden && (
-        <HostDock state={state} secret={adm.secret} onLock={adm.lock} refetch={refetch} idle={idle} />
+        <HostDock state={state} secret={adm.secret} onLock={adm.lock} refetch={refetch} idle={idle}
+          onSkipVerdict={results.screen === "verdict" ? results.skip : undefined} />
       )}
       {canDock && !adm.secret && (
         // Invisible hotspot so the host can unlock without a keyboard shortcut. Nothing visible to the audience.
@@ -68,29 +119,37 @@ export default function ProjectorPage() {
 
 // ---------------------------------------------------------------------------------------------------------------------
 
-function Courtroom({ state, offset, joinUrl }: { state: UiGameState | null; offset: number; joinUrl: string }) {
+function Courtroom({ state, offset, joinUrl, results }: { state: UiGameState | null; offset: number; joinUrl: string; results: ResultsStage }) {
   if (!state) {
     return <div className="grid h-full place-items-center"><Title /></div>;
   }
   const r = state.round;
+  // Header title + timer follow the results sub-screen; the leaderboard has no timer (waits for the host).
+  const title = results.screen === "verdict" ? "Judge's verdict" : results.screen === "leaderboard" ? "Winner & leaderboard"
+    : state.phase === "results" ? PHASE_LABEL.judging : PHASE_LABEL[state.phase];
+  const timer = results.screen === "verdict"
+    ? { deadline: results.verdictEndsAt, start: results.verdictStart }
+    : state.phase === "results" ? null : { deadline: r?.phaseEndsAt, start: r?.phaseStartedAt };
   return (
-    <div className="flex h-full flex-col p-8">
-      <header className="flex h-24 shrink-0 items-center justify-between">
+    <div className="flex h-full flex-col px-7 pb-7 pt-4">
+      <header className="flex h-20 shrink-0 items-center justify-between gap-6">
         <div className="flex items-center gap-3">
-          <span className="text-5xl" aria-hidden>⚖️</span>
+          <span className="text-4xl" aria-hidden>⚖️</span>
           <div>
-            <p className="text-3xl font-black leading-none">AI Courtroom</p>
-            {r && <p className="text-lg font-bold text-white/70">Round {r.number}{state.game.maxRounds ? ` of ${state.game.maxRounds}` : ""} · join at {joinUrl}</p>}
+            <p className="text-2xl font-black leading-none">AI Courtroom</p>
+            {r && <p className="text-base font-bold text-white/70">Round {r.number}{state.game.maxRounds ? ` of ${state.game.maxRounds}` : ""} · join at {joinUrl}</p>}
           </div>
         </div>
-        {state.phase !== "lobby" && <PhaseBanner phase={state.phase} className="!text-left" />}
-        <div className="w-28">
-          <Countdown deadline={r?.phaseEndsAt} start={r?.phaseStartedAt} offset={offset} size={112} />
+        {state.phase !== "lobby" && (
+          <h1 key={title} className="animate-banner text-[clamp(2rem,2.6vw,3.1rem)] font-black drop-shadow-[0_4px_0_rgba(0,0,0,0.25)]">{title}</h1>
+        )}
+        <div className="flex w-24 justify-end">
+          {timer && <Countdown deadline={timer.deadline} start={timer.start} offset={offset} size={92} />}
         </div>
       </header>
 
-      <section key={state.phase} className="mt-6 min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        <Stage state={state} joinUrl={joinUrl} />
+      <section key={`${state.phase}:${results.screen ?? ""}`} className="mt-4 min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <Stage state={state} joinUrl={joinUrl} results={results} />
       </section>
     </div>
   );
@@ -105,7 +164,7 @@ function Title() {
   );
 }
 
-function Stage({ state, joinUrl }: { state: UiGameState; joinUrl: string }) {
+function Stage({ state, joinUrl, results }: { state: UiGameState; joinUrl: string; results: ResultsStage }) {
   const r = state.round;
   const c = state.case;
   switch (state.phase) {
@@ -156,42 +215,12 @@ function Stage({ state, joinUrl }: { state: UiGameState; joinUrl: string }) {
     case "debate":
       return c && r && <Debate state={state} />;
     case "judging":
-      return (
-        <div className="grid h-full place-items-center text-center">
-          <div>
-            <div className="animate-wiggle inline-block text-[12rem] leading-none" aria-hidden>🔨</div>
-            <h2 className="mt-6 text-8xl font-black">The judge is deliberating…</h2>
-            <p className="mt-4 text-4xl font-bold text-white/80">Evidence · Logic · Rebuttal · Persuasion</p>
-            {c && <div className="mx-auto mt-10 max-w-6xl"><PositionsPanel c={c} big /></div>}
-          </div>
-        </div>
-      );
+      return <Judging state={state} />;
     case "results": {
       const v = state.verdict;
-      if (!v) return <div className="grid h-full place-items-center text-7xl font-black">Settling bets…</div>;
-      // Everything fits one 16:9 screen: short banner + score bars on top, the full reasoning in the remaining
-      // space (font scales with its length, and it scrolls inside its own panel as a last resort: never clipped).
-      // The leaderboard sits in its own column beside the verdict and never covers it. Stays until the next round.
-      const words = (v.explanation + " " + [...(v.strengths?.A ?? []), ...(v.strengths?.B ?? []), ...(v.weaknesses?.A ?? []), ...(v.weaknesses?.B ?? [])].join(" ")).split(/\s+/).length;
-      const textSize = words > 220 ? "text-[clamp(0.85rem,1vw,1.25rem)]" : words > 130 ? "text-[clamp(0.95rem,1.15vw,1.5rem)]" : "text-[clamp(1.05rem,1.35vw,1.8rem)]";
-      return (
-        <div className="grid h-full min-h-0 grid-cols-[2.2fr_1fr] gap-8">
-          <div className="flex min-h-0 flex-col gap-4">
-            <WinnerBanner v={v} />
-            <IncompleteNotice v={v} big />
-            <ScoreBars v={v} big />
-            <div className={`card flex min-h-0 flex-1 flex-col overflow-y-auto p-5 font-bold leading-snug ${textSize}`}>
-              <p className="text-[0.75em] font-black uppercase tracking-widest text-court">Judge&apos;s reasoning</p>
-              <p className="mt-1">{v.explanation}</p>
-              <JudgeNotes v={v} className="mt-3 text-[0.85em]" />
-            </div>
-          </div>
-          <div className="flex min-h-0 flex-col overflow-hidden">
-            <p className="mb-3 text-center text-4xl font-black">🏆 Leaderboard</p>
-            <Podium entries={state.leaderboard} big maxRest={3} />
-          </div>
-        </div>
-      );
+      // Verdict not in the state yet: keep the judging screen rather than an empty verdict.
+      if (!v || !results.screen) return <Judging state={state} />;
+      return results.screen === "verdict" ? <VerdictScreen v={v} /> : <WinnerScreen v={v} state={state} />;
     }
     case "cancelled":
       return (
@@ -205,6 +234,136 @@ function Stage({ state, joinUrl }: { state: UiGameState; joinUrl: string }) {
       );
   }
 }
+
+function Judging({ state }: { state: UiGameState }) {
+  const c = state.case;
+  return (
+    <div className="grid h-full place-items-center text-center">
+      <div>
+        <div className="animate-wiggle inline-block text-[12rem] leading-none" aria-hidden>🔨</div>
+        <h2 className="mt-6 text-8xl font-black">The judge is deliberating…</h2>
+        <p className="mt-4 text-4xl font-bold text-white/80">Evidence · Logic · Rebuttal · Persuasion</p>
+        {c && <div className="mx-auto mt-10 max-w-6xl"><PositionsPanel c={c} big /></div>}
+      </div>
+    </div>
+  );
+}
+
+// ---- Results screen 1: Judge Verdict (timed) -------------------------------------------------------------------------
+
+const DIMS: { key: keyof CriterionScores; label: string }[] = [
+  { key: "evidence", label: "Evidence" }, { key: "logic", label: "Logic" },
+  { key: "rebuttal", label: "Rebuttal" }, { key: "persuasion", label: "Persuasion" },
+];
+
+/** Full verdict on one 16:9 screen: winner strip, A vs B score cards, then the full reasoning (scales, scrolls in its own panel). */
+function VerdictScreen({ v }: { v: UiVerdict }) {
+  const w = SIDE[v.winner];
+  const words = v.explanation.split(/\s+/).length + (v.decisiveExchange?.description.split(/\s+/).length ?? 0);
+  const textSize = words > 180 ? "text-[clamp(0.9rem,1.05vw,1.3rem)]" : words > 100 ? "text-[clamp(1rem,1.25vw,1.6rem)]" : "text-[clamp(1.1rem,1.5vw,1.9rem)]";
+  return (
+    <div className="flex h-full min-h-0 flex-col gap-4">
+      <div className={`animate-pop flex shrink-0 items-center gap-4 rounded-2xl px-6 py-3 text-white shadow-[0_6px_0_rgba(0,0,0,0.3)] ${w.bg}`}>
+        <AgentIcon side={v.winner} className="h-12 w-12 shrink-0" />
+        <p className="text-[clamp(1.6rem,2.4vw,3rem)] font-black leading-none">⚖️ The court finds for {w.name}</p>
+        {v.summary && <p className="ml-auto max-w-[45%] text-right text-[clamp(1rem,1.3vw,1.6rem)] font-bold leading-snug text-white/90">{v.summary}</p>}
+      </div>
+      {!v.complete && <div className="shrink-0"><IncompleteNotice v={v} big /></div>}
+
+      <div className="grid shrink-0 grid-cols-2 gap-6">
+        <AgentScoreCard v={v} side="A" />
+        <AgentScoreCard v={v} side="B" />
+      </div>
+
+      <div className={`card animate-slide-up flex min-h-0 flex-1 flex-col overflow-y-auto p-5 font-bold leading-snug ${textSize}`} style={{ animationDelay: "500ms" }}>
+        <p className="text-[0.7em] font-black uppercase tracking-widest text-court">Judge&apos;s reasoning</p>
+        <p className="mt-1">{v.explanation}</p>
+        {v.decisiveExchange && <p className="mt-2 text-[0.9em]"><span className="font-black text-court">Decisive moment:</span> {v.decisiveExchange.description}</p>}
+      </div>
+    </div>
+  );
+}
+
+function AgentScoreCard({ v, side }: { v: UiVerdict; side: Side }) {
+  const s = SIDE[side];
+  const won = v.winner === side;
+  const [on, setOn] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setOn(true), 350); return () => clearTimeout(t); }, []);
+  const sc = v.scores?.[side];
+  const total = sc ? sc.evidence + sc.logic + sc.rebuttal + sc.persuasion : null;
+  const notes = [...(v.strengths?.[side] ?? []).map((t) => `✅ ${t}`), ...(v.weaknesses?.[side] ?? []).map((t) => `⚠️ ${t}`)];
+  return (
+    <div className={`card animate-slide-up overflow-hidden ${won ? `ring-8 ${s.ring}` : "opacity-90"}`} style={{ animationDelay: side === "A" ? "150ms" : "300ms" }}>
+      <div className={`flex items-center gap-3 px-5 py-2 text-white ${s.bg}`}>
+        <AgentIcon side={side} className="h-9 w-9" />
+        <span className="text-3xl font-black">{s.name}</span>
+        {won && <span className="rounded-full bg-white px-3 py-0.5 text-lg font-black text-ink">🏆 WINNER</span>}
+        <span className="ml-auto text-right font-black leading-none">
+          {total !== null && <span className="block text-3xl">{total}<span className="text-lg text-white/80">/40</span></span>}
+          {v.overall && <span className="block text-sm text-white/80">avg {v.overall[side]}</span>}
+        </span>
+      </div>
+      <div className="grid gap-2 px-5 py-3">
+        {sc ? DIMS.map((d, i) => (
+          <div key={d.key} className="grid grid-cols-[8.5rem_1fr_2.5rem] items-center gap-3 text-xl font-black">
+            <span className="text-ink/70">{d.label}</span>
+            <div className="h-5 overflow-hidden rounded-full bg-gray-200">
+              <div className={`h-full rounded-full ${s.bg}`} style={{ width: on ? `${sc[d.key] * 10}%` : "0%", transition: `width 900ms cubic-bezier(.2,1.2,.4,1) ${i * 150}ms` }} />
+            </div>
+            <span className="text-right">{sc[d.key]}</span>
+          </div>
+        )) : <p className="font-bold text-ink/60">Scores not available for this verdict.</p>}
+        {notes.length > 0 && (
+          <ul className="mt-1 grid gap-0.5 text-base font-bold text-ink/80">
+            {notes.map((n, i) => <li key={i}>{n}</li>)}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---- Results screen 2: Winner and Leaderboard (until the next round) -------------------------------------------------
+
+function WinnerScreen({ v, state }: { v: UiVerdict; state: UiGameState }) {
+  const s = SIDE[v.winner];
+  return (
+    <div className="relative grid h-full min-h-0 grid-cols-[1fr_1.15fr] gap-10">
+      <Confetti />
+      <div className="flex min-h-0 flex-col items-center justify-center">
+        <div className={`animate-pop w-full rounded-[2.5rem] p-10 text-center text-white shadow-[0_12px_0_rgba(0,0,0,0.3)] ${s.bg}`}>
+          <AgentIcon side={v.winner} className="mx-auto h-40 w-40 animate-float" />
+          <p className="mt-4 text-[clamp(3rem,5.5vw,7rem)] font-black leading-none drop-shadow-[0_6px_0_rgba(0,0,0,0.25)]">{s.name}</p>
+          <p className="mt-2 text-[clamp(2rem,3.4vw,4.2rem)] font-black">WINS THE CASE! 🎉</p>
+          {v.summary && <p className="mt-4 text-[clamp(1.1rem,1.5vw,1.9rem)] font-bold text-white/90">{v.summary}</p>}
+        </div>
+      </div>
+      <div className="flex min-h-0 flex-col overflow-hidden">
+        <p className="mb-3 text-center text-5xl font-black">🏆 Leaderboard</p>
+        <Podium entries={state.leaderboard} big maxRest={5} showDeltas />
+      </div>
+    </div>
+  );
+}
+
+const CONFETTI_COLORS = ["#e21b3c", "#1368ce", "#ffa602", "#26890c", "#ffffff"];
+/** Simple CSS confetti; hidden entirely under prefers-reduced-motion (.confetti in globals.css). */
+function Confetti() {
+  return (
+    <div className="confetti pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
+      {Array.from({ length: 48 }, (_, i) => (
+        <span key={i} className="absolute top-0 block h-4 w-2.5 rounded-sm"
+          style={{
+            left: `${(i * 37) % 100}%`,
+            background: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+            animation: `confetti-fall ${3 + (i % 5) * 0.6}s linear ${(i % 12) * 0.35}s infinite`,
+          }} />
+      ))}
+    </div>
+  );
+}
+
+// ---- Debate --------------------------------------------------------------------------------------------------------
 
 /** Two-column courtroom: A (red) left, B (blue) right; timeline in the middle, newest at the bottom, ordered by turn. */
 function Debate({ state }: { state: UiGameState }) {

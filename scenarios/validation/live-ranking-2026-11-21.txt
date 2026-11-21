@@ -1,0 +1,97 @@
+
+========================================================================================
+RUN 1: "The Empty Display Case" (empty-display-case) | seed 101 | claude-sonnet-5-5, effort low
+Candidates in the order shown to both agents: 1.opportunistic-theft  2.staged-theft  3.handling-error  4.personal-motive-insider
+Agent A personality: scepticism 0.55 | inference 0.48 | risk 0.33 | simplicity 0.49 | directness 0.47 | flourish 0.69 | aggression 0.12
+Agent B personality: scepticism 0.32 | inference 0.82 | risk 0.41 | simplicity 0.49 | directness 0.09 | flourish 0.77 | aggression 0.91
+
+Agent A ranking (3322 ms, tokens in/out 953/276):
+  #1 handling-error (Handling error)  defensibility 55/100
+      "Conservator opened the case the previous afternoon (5); no forced entry or scratches (2). An unlogged move fits the intact glass and the undisturbed gallery, and needs no extra assumptions."
+  #2 personal-motive-insider (Insider, personal motive)  defensibility 40/100
+      "No forced lock or broken glass suggests key access (2); the smudged 1:45 a.m. entry (4) hints at timing around rounds, but nothing shows motive."
+  #3 opportunistic-theft (Opportunistic theft)  defensibility 30/100
+      "Keyed access fits the clean lock (2) and the open case after the conservator's check (5), but the accidental alarm and impulse are unsupported."
+
+Agent B ranking (3447 ms, tokens in/out 967/295):
+  #1 handling-error (Handling error)  defensibility 55/100
+      "Conservator opened the case the previous afternoon (5); intact glass and unscratched lock (2) fit routine access, and the smudged logbook (4) suggests sloppy records. Weakness: it doesn't explain the alarm."
+  #2 personal-motive-insider (Insider, personal motive)  defensibility 48/100
+      "No forced entry (2) points to key access; the smudged 1:45 entry (4) shortly before the 2 a.m. alarm hints at timing around rounds. Nothing shows a personal motive."
+  #3 staged-theft (Staged for insurance)  defensibility 35/100
+      "The insurance renewal due that week (3) and the deliberate alarm give a motive and a record, but the renewal is circumstantial and nothing shows planning."
+
+Latency: A 3322 ms | B 3447 ms | combined wall-clock (parallel) 3460 ms
+Tokens in/out: 1920/571 | estimated cost $0.0095 (estimate at $2/$10 per MTok)
+
+PREPARATION FAILED at stage "selection": no_credible_opposing_pair: no pair of different interpretations with both opinions at or above 60/100
+  selection errors: no pair of different interpretations with both opinions at or above 60/100
+  diagnostics: {"minStrength":60,"opinionsA":3,"opinionsB":3,"usableA":0,"usableB":0,"pairsConsidered":9,"pairsSameInterpretation":2,"pairsBelowStrength":7,"pairsValid":0,"tiedPairs":0,"topPairs":[]}
+
+========================================================================================
+RUN 2: "The Empty Display Case" (empty-display-case) | seed 202 | claude-sonnet-5-5, effort low
+Candidates in the order shown to both agents: 1.opportunistic-theft  2.staged-theft  3.handling-error  4.personal-motive-insider
+Agent A personality: scepticism 0.71 | inference 0.24 | risk 0.88 | simplicity 0.70 | directness 0.27 | flourish 0.19 | aggression 0.49
+Agent B personality: scepticism 0.74 | inference 0.18 | risk 0.49 | simplicity 0.30 | directness 0.18 | flourish 0.45 | aggression 0.45
+
+Agent A ranking (3061 ms, tokens in/out 966/290):
+  #1 handling-error (Handling error)  defensibility 55/100
+      "Simplest reading: the conservator opened the case the previous afternoon (5), no forced entry (2), nothing else disturbed. A smudged log (4) fits sloppy paperwork. It doesn't explain the alarm well."
+  #2 opportunistic-theft (Opportunistic theft)  defensibility 35/100
+      "No-scratch lock (2) suggests keyed access, and the case being opened earlier (5) gives a chance. But impulse and accidental alarm are not supported by any evidence."
+  #3 staged-theft (Staged for insurance)  defensibility 22/100
+      "Insurance renewal timing (3) is suggestive, but it is the only support. Nothing shows planning or a deliberate alarm, so this requires heavy inference."
+
+Agent B ranking (3249 ms, tokens in/out 961/274):
+  #1 handling-error (Handling error)  defensibility 50/100
+      "Fits directly observed facts: no forced entry, intact glass, and a conservator opened the case the previous afternoon (5). Smudged log (4) hints at poor record-keeping. Alarm remains unexplained."
+  #2 opportunistic-theft (Opportunistic theft)  defensibility 32/100
+      "No-damage lock (2) suggests key access, and the smudged 1:45 entry (4) allows a chance. But impulse and accidental alarm are not directly evidenced."
+  #3 staged-theft (Staged for insurance)  defensibility 18/100
+      "Only the insurance renewal timing (3) supports it; premeditation and deliberate alarm are inferences beyond observed facts."
+
+Latency: A 3061 ms | B 3249 ms | combined wall-clock (parallel) 3251 ms
+Tokens in/out: 1927/564 | estimated cost $0.0095 (estimate at $2/$10 per MTok)
+
+PREPARATION FAILED at stage "selection": no_credible_opposing_pair: no pair of different interpretations with both opinions at or above 60/100
+  selection errors: no pair of different interpretations with both opinions at or above 60/100
+  diagnostics: {"minStrength":60,"opinionsA":3,"opinionsB":3,"usableA":0,"usableB":0,"pairsConsidered":9,"pairsSameInterpretation":3,"pairsBelowStrength":6,"pairsValid":0,"tiedPairs":0,"topPairs":[]}
+
+========================================================================================
+RUN 3: "The Silent Call" (silent-call) | seed 303 | claude-sonnet-5-5, effort low
+Candidates in the order shown to both agents: 1.prank-call  2.equipment-fault  3.targeted-intimidation  4.wrong-number-loop
+Agent A personality: scepticism 0.41 | inference 0.65 | risk 0.34 | simplicity 0.90 | directness 0.75 | flourish 0.69 | aggression 0.67
+Agent B personality: scepticism 0.18 | inference 0.86 | risk 0.74 | simplicity 0.29 | directness 0.19 | flourish 0.89 | aggression 0.55
+
+Agent A ranking (3702 ms, tokens in/out 977/294):
+  #1 equipment-fault (Equipment fault)  defensibility 62/100
+      "One simple cause fits the evidence: the alarm company's new panel dial-out test (5), the dead payphone number (3), and no speech or demands (2). Neighbours' calls remain unexplained."
+  #2 wrong-number-loop (Automated wrong number)  defensibility 52/100
+      "Automated dialling explains the ticking, short 20-second drop, and similar calls to neighbours (4), plus the alarm panel test (5). It is weaker because the calls stopped and the caller ID is a removed payphone."
+  #3 prank-call (Prank call)  defensibility 35/100
+      "Pranks could explain the neighbours' calls (4) and the spoofed number (3). But no speech, a single call, and the panel test (5) make it less simple."
+
+Agent B ranking (3290 ms, tokens in/out 989/304):
+  #1 wrong-number-loop (Automated wrong number)  defensibility 62/100
+      "Steady ticking and breathing could be test tones or line artefacts. Similar calls to neighbours last month fit an outdated list, and the alarm panel's recent dial-out test (5) is a plausible link."
+  #2 equipment-fault (Equipment fault)  defensibility 58/100
+      "The alarm panel's dial-out test (5) and the removed payphone number (3) suggest a technical artefact. The noises and 20-second drop fit a machine, though the neighbours' calls predate the panel work."
+  #3 targeted-intimidation (Targeted intimidation)  defensibility 35/100
+      "A dead payphone number (3) and eerie silence suit a stalker, and the neighbours' calls could be cover. But nothing shows she was singled out, and the calls have stopped."
+
+Latency: A 3702 ms | B 3290 ms | combined wall-clock (parallel) 3704 ms
+Tokens in/out: 1966/598 | estimated cost $0.0099 (estimate at $2/$10 per MTok)
+
+SELECTED  Agent A: [equipment-fault] Equipment fault   |   Agent B: [wrong-number-loop] Automated wrong number
+  A got its first preference: YES | B got its first preference: YES
+  distinct: yes | both defensible (>= 60): yes | pair score 144 | valid pairs 1/9 | tied 1
+  startRound scenario.interpretationA = "A faulty or misconfigured device, such as the new alarm panel or a legacy exchange line, dialled by mistake and produced the noises as line artefacts."
+  startRound scenario.interpretationB = "An automated dialler or monitoring service with an outdated contact list keeps reaching the wrong household; the sounds are its test tones."
+
+========================================================================================
+SUMMARY: 6 paid requests of 6 allowed
+run | scenario | seed | A first choice | B first choice | A = listing order? | B = listing order? | outcome
+1 | empty-display-case | 101 | handling-error | handling-error | no | no | FAILED(selection)
+2 | empty-display-case | 202 | handling-error | handling-error | no | no | FAILED(selection)
+3 | silent-call | 303 | equipment-fault | wrong-number-loop | no | no | equipment-fault vs wrong-number-loop
+Total tokens in/out 5813/1733 | estimated total cost $0.0290 | summed run wall-clock 10415 ms

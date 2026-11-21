@@ -1,0 +1,124 @@
+import type { ScenarioCase } from "./types";
+
+/**
+ * Hand-authored, validated cases (ready to use without any model call). The evidence supports several readings and settles
+ * none; each case has four candidate interpretations with stable ids. Generate more with generateScenarioBatch (live, separate
+ * step) and validate them with validateScenarioCase before adding them to a pool.
+ * `imagePath` is left unset: images are generated separately and attached afterwards.
+ */
+export const PREPARED_CASES: ScenarioCase[] = [
+  {
+    id: "empty-display-case",
+    title: "The Empty Display Case",
+    description: "At 2 a.m. a museum alarm sounded. Staff reached the gallery within minutes and found the display case of a minor painting open and empty. The glass was intact and nothing else had been disturbed.",
+    evidence: [
+      "The alarm sounded at 2 a.m. and staff reached the gallery within four minutes.",
+      "The case was open and empty; the glass was intact and the lock showed no scratches.",
+      "The painting's insurance renewal was due that week.",
+      "The night guard's logbook has a partly smudged entry for 1:45 a.m.",
+      "A conservator had opened the case the previous afternoon for a routine condition check.",
+    ],
+    interpretations: [
+      { id: "opportunistic-theft", label: "Opportunistic theft", description: "Someone with access to the case keys took the painting on impulse when a chance arose, and set off the alarm by mistake while leaving." },
+      { id: "staged-theft", label: "Staged for insurance", description: "The theft was planned in advance so the loss could support a later insurance claim, and the alarm was triggered on purpose to create an official record." },
+      { id: "handling-error", label: "Handling error", description: "No theft happened: the painting was moved for conservation or storage without being logged, and the open case is a paperwork failure." },
+      { id: "personal-motive-insider", label: "Insider, personal motive", description: "A staff member removed it deliberately for private reasons unrelated to money from insurance, timing it around the guard's rounds." },
+    ],
+    imagePrompt: "A dim museum gallery at night, an open empty glass display case under a single spotlight, a security camera in the corner, moody cinematic lighting, no people, painterly realism.",
+  },
+  {
+    id: "silent-call",
+    title: "The Silent Call",
+    description: "A woman's landline rang at 3 a.m. When she answered she heard only faint breathing and a ticking sound before the line went dead. Nothing like it had happened to her before.",
+    evidence: [
+      "The call came at 3:02 a.m. and she answered on the second ring.",
+      "She heard faint breathing and a steady ticking; nobody spoke, and the line dropped after about twenty seconds.",
+      "The phone records show the calling number belongs to a payphone that was removed last year.",
+      "Two neighbours say they received similar late-night calls last month; none since.",
+      "Her home alarm company recently replaced its control panel and tested the panel's dial-out line.",
+    ],
+    interpretations: [
+      { id: "prank-call", label: "Prank call", description: "A person, probably a local teenager using a spoofing app, made the call for amusement and played a ticking clock to unsettle her." },
+      { id: "equipment-fault", label: "Equipment fault", description: "A faulty or misconfigured device, such as the new alarm panel or a legacy exchange line, dialled by mistake and produced the noises as line artefacts." },
+      { id: "targeted-intimidation", label: "Targeted intimidation", description: "Someone is deliberately frightening her, hiding behind a dead number, and the earlier calls to neighbours were rehearsals or cover." },
+      { id: "wrong-number-loop", label: "Automated wrong number", description: "An automated dialler or monitoring service with an outdated contact list keeps reaching the wrong household; the sounds are its test tones." },
+    ],
+    imagePrompt: "A dark bedroom at 3 a.m., a ringing old landline telephone on a nightstand, a clock face showing 3:02, thin light from a streetlamp through the blinds, tense atmosphere, no faces.",
+  },
+  {
+    id: "open-gate",
+    title: "The Open Gate",
+    description: "A neighbour's front gate, normally kept locked, has been found open every morning this week. The family is on holiday and arranged a house-sitter whom none of the neighbours has met.",
+    evidence: [
+      "The usually locked front gate was open every morning this week; it is shut again each evening.",
+      "The lock is undamaged and nothing visible has been taken from the garden.",
+      "The family is away and arranged a house-sitter whom no neighbour has met.",
+      "A neighbour noticed a stranger walking slowly past the house on Tuesday afternoon.",
+      "Strong winds were forecast on two of the mornings.",
+    ],
+    interpretations: [
+      { id: "sitter-routine", label: "House-sitter's routine", description: "The house-sitter leaves early for a walk or work and simply forgets to relock the gate, then closes it again in the evening." },
+      { id: "scouting-visits", label: "Someone scouting", description: "A stranger is checking whether the house is being watched, opening the gate each morning to test who reacts." },
+      { id: "faulty-latch", label: "Latch fails in the wind", description: "The latch is worn and the wind or the gate's own weight releases it overnight, so nobody opened it at all." },
+      { id: "legitimate-visitor", label: "Legitimate early visitor", description: "A gardener, delivery driver or relative with their own key arrives before dawn and leaves the gate open when they go." },
+    ],
+    imagePrompt: "A quiet suburban street at dawn, a wrought-iron front gate standing slightly open on a tidy garden path, long soft shadows, mist, a hint of unease, no people visible.",
+  },
+  {
+    id: "missing-rows",
+    title: "The Missing Rows",
+    description: "On Monday morning an accountant found forty rows missing from a shared spreadsheet. The file history records the deletion late on Sunday night.",
+    evidence: [
+      "Forty rows were missing from the shared spreadsheet on Monday morning.",
+      "The file history shows the deletion at 11:52 p.m. on Sunday, made by a shared analyst login that rarely edits this file.",
+      "That login signed in on Sunday from a device it had not used before.",
+      "A data-cleaning macro was scheduled for Sunday nights, but its log shows no run.",
+      "A backup taken on Friday is intact.",
+    ],
+    interpretations: [
+      { id: "insider-deletion", label: "Deliberate insider deletion", description: "A colleague with access to the shared login removed the rows on purpose, for example to hide figures, and chose a quiet hour to do it." },
+      { id: "account-compromised", label: "Compromised login", description: "An outsider obtained the shared credentials, signed in from their own device and deleted the rows, possibly to cause disruption." },
+      { id: "automation-misfire", label: "Automation misfire", description: "A cleanup script or macro ran under that login in an unrecorded way and wrongly removed rows it treated as stale." },
+      { id: "honest-mistake", label: "Honest mistake", description: "A legitimate user working late on a new device selected and deleted the wrong range, never noticing, and did not report it." },
+    ],
+    imagePrompt: "A dark open-plan office at night, a single monitor glowing with a spreadsheet that has an obvious gap in its rows, a cold blue light, empty desks, no people.",
+  },
+  {
+    id: "parked-van",
+    title: "The Parked Van",
+    description: "A delivery van sat for forty minutes on a quiet side street two roads away from its scheduled route. The driver was not with it, the cargo door was shut and the engine was off.",
+    evidence: [
+      "The van was parked for forty minutes on a side street two roads from its scheduled route.",
+      "The driver was absent, the cargo door was shut and the engine was off.",
+      "A shop owner says the same van parked there the day before as well.",
+      "Dispatch received no call from the driver and its GPS log shows a normal ping before and after the stop.",
+      "The cargo seal was recorded as intact at the end of the shift.",
+    ],
+    interpretations: [
+      { id: "personal-errand", label: "Personal errand", description: "The driver repeatedly steps away from the route for a private errand or a regular visit, and parks where nobody will mind." },
+      { id: "off-book-handover", label: "Unlogged handover", description: "The driver meets someone at that spot to hand over or collect goods outside the company's records, then reseals the cargo." },
+      { id: "breakdown-or-health", label: "Breakdown or health issue", description: "The van or the driver had a brief problem, a mechanical warning or a health need, and the driver went for help without calling in." },
+      { id: "unrecorded-break", label: "Habitual rest break", description: "The driver takes the legally required rest at a quiet spot they prefer, and nobody ever logged where breaks happen." },
+    ],
+    imagePrompt: "A white delivery van parked alone on a narrow residential side street in flat afternoon light, closed rear doors, an empty pavement, a shopfront in the background, neutral documentary style.",
+  },
+  {
+    id: "drawn-curtains",
+    title: "The Drawn Curtains",
+    description: "All week the curtains of a corner flat have been drawn at exactly 6 p.m. and opened again at 6 a.m. The tenant, who normally keeps them open, has not been seen coming or going.",
+    evidence: [
+      "The curtains were drawn at exactly 6 p.m. and opened at 6 a.m. every day this week.",
+      "The tenant normally keeps the curtains open and has not been seen coming or going all week.",
+      "The mail has been collected from the box each day.",
+      "A neighbour heard a TV on and off in the evenings but no voices.",
+      "The tenant installed a smart-home hub last month, according to the building manager.",
+    ],
+    interpretations: [
+      { id: "smart-timer", label: "Smart-home timer", description: "The new smart-home hub runs a schedule that moves the curtains, and the tenant is simply away while the system keeps running." },
+      { id: "hiding-at-home", label: "Tenant hiding indoors", description: "The tenant is at home but deliberately avoiding contact, staying inside and keeping a strict routine to appear absent." },
+      { id: "someone-else-living", label: "Someone else is living there", description: "A relative, friend or subletter is staying in the flat in the tenant's absence and keeps their own habits." },
+      { id: "caretaker-visits", label: "Caretaker looks after the flat", description: "The tenant is away and has asked someone to visit each day to collect mail and manage the curtains and lights." },
+    ],
+    imagePrompt: "A corner apartment block at dusk, one flat with heavy curtains pulled shut while its neighbours stay open, warm light leaking at the edges, quiet street below, no people.",
+  },
+];

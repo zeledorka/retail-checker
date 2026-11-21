@@ -34,13 +34,13 @@ export type PublicMessage = {
   stage: 'opening' | 'turn';
   sequence: number;
   debateTurn: number | null;
-  text: string;              // at most 45 words (enforced by the AI module)
+  text: string;              // openings ≤ 70 words, turns ≤ 45 words (AI_ARGUMENT_MAX_WORDS / AI_TURN_MAX_WORDS in the AI module)
   createdAt: string;
 };
 export type CriterionScores = { evidence: number; logic: number; rebuttal: number; persuasion: number };
 export type PublicVerdict = {
   winner: Side;
-  explanation: string;
+  explanation: string;       // may cite transcript entries as "E1", "E2"…: E{n} = the PublicMessage with sequence n (NOT evidence #n)
   summary: string | null;
   scores: Record<Side, CriterionScores>;
   complete: boolean;         // false = the clock cut the debate short and the judge ruled on fewer turns

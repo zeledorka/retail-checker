@@ -4,7 +4,7 @@
 -- Exact nicknames (not LIKE 'Sim%') so a real player called e.g. "Simon" is never touched.
 delete from auth.users
  where id in (select id from public.players
-               where nickname in ('SimAlice','SimBob','SimCarol','SimDave','SimErin'));
+               where nickname in ('SimAlice','SimBob','SimCarol','SimDave','SimErin','SimAudit'));
 -- Anonymous sign-ins that never joined (get-token.ts / test leftovers). Before doors open nobody real is in this state.
 delete from auth.users u
  where u.is_anonymous

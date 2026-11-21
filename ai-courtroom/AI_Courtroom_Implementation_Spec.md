@@ -1,5 +1,14 @@
 # AI Courtroom — Final Hackathon Architecture & Team Handoff
 
+> **SUPERSEDED (kept for history).** This is the original parallel-debate design. The code now follows the sequential
+> engine: phases `REVEAL → BETTING → OPENINGS → DEBATE → JUDGING → RESULTS` (+ `CANCELLED`); one clue per player per
+> round (`POST /api/inject` body `{ roundId, text }`, 1-200 chars, no `window`, no top-3 sampling); cases use
+> `title / description / evidence / interpretationA / interpretationB / imageUrl` (DB `interpretation_a/_b`, not
+> `hypothesis_*`); verdicts expose `explanation` (DB column `rationale`); message stages are `opening | turn`;
+> env vars are `ANTHROPIC_API_KEY` / `OPENROUTER_API_KEY` in `ai-courtroom/.env` (not `AI_PROVIDER_API_KEY`,
+> `IMAGE_PROVIDER_API_KEY` or `.env.local`); `generatePair()` no longer exists. The source of truth for the API is
+> `types/game.ts`; for the DB, `supabase/migrations/0001-0005`.
+
 **Deadline:** Saturday 21 November 2026 at 2:00 pm Brisbane time  
 **Team:** 3 developers  
 **Stack:** Next.js + TypeScript + Vercel, Supabase Postgres/Auth/Realtime/Storage, external LLM API and image generation API  

@@ -91,7 +91,7 @@ export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
  * @param userId  the signed-in player's id, or null for the projector /display screen.
  *
  * SECURITY RULES ENFORCED HERE (this is "the serializer" the spec talks about):
- *   - verdict winner/rationale only after the round is settled AND in RESULTS
+ *   - verdict winner/explanation only after the round is settled AND in RESULTS (DB column `rationale` → API `explanation`)
  *   - audience clues are never public (only the player's own clue, in `me`); the AI state is never read here
  *   - other players' bets are never included
  */

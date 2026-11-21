@@ -16,7 +16,7 @@ import {
 import { getActiveGame } from '@/lib/game/state';
 import { GameError } from '@/lib/game/errors';
 import { MAX_TURNS } from '@/lib/game/constants';
-import type { AdvanceResponse, Phase, RunAiResponse, Side, TickResponse } from '@/types/game';
+import type { AdvanceResponse, Phase, RunAiResponse, Side, StateResponse, TickResponse } from '@/types/game';
 
 /* ==========================================================================================
  * 1. CONFIGURATION: the shape of a round. Change timings here, nowhere else.
@@ -416,4 +416,25 @@ export async function resetGame(): Promise<string> {
   const { data, error } = await db.rpc('reset_game');
   if (error) throw error;
   return data as string;                        // the new game id
+}
+
+/** Turn server-side autopilot on/off for the active game (bumps `version`). Returns the new value. */
+export async function setAutopilot(enabled: boolean): Promise<boolean> {
+  const { data, error } = await db.rpc('set_autopilot', { p_enabled: enabled });
+  if (error) throw error;
+  return data as boolean;
+}
+
+/**
+ * Should a GET /api/state poll kick off a tick()? Uses only the state already built for the response (no queries).
+ * True when the phase deadline has passed, or when an AI phase still has a model call to make and none is in flight
+ * (without this, DEBATE turns and the judge would only run after the deadline). OPENINGS done = wait for the clock.
+ * Extra ticks are harmless: tick() re-reads the round and the lease/compare-and-set make overlapping calls no-ops.
+ */
+export function autopilotDue(state: StateResponse, now = Date.now()): boolean {
+  const r = state.round;
+  if (!state.game.autopilot || state.game.status !== 'IN_PROGRESS' || !r) return false;
+  if (now >= Date.parse(r.phaseEndsAt)) return true;
+  if (!isAiPhase(r.phase) || r.aiStepStatus === 'running') return false;
+  return !(r.phase === 'OPENINGS' && r.aiStepStatus === 'done');
 }

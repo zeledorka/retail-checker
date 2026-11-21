@@ -9,7 +9,7 @@ import type {
 
 type GameRow = {
   id: string; status: 'LOBBY' | 'IN_PROGRESS' | 'GAME_OVER';
-  current_round_id: string | null; round_number: number; max_rounds: number; version: number;
+  current_round_id: string | null; round_number: number; max_rounds: number; version: number; autopilot: boolean;
 };
 type RoundRow = {
   id: string; case_id: string; round_number: number; phase: Phase;
@@ -67,7 +67,7 @@ export async function getActiveGame(): Promise<GameRow> {
 
 /** The public subset of the game. Note: no internal fields like is_active. */
 export const toPublicGame = (g: GameRow) => ({
-  id: g.id, status: g.status, roundNumber: g.round_number, maxRounds: g.max_rounds,
+  id: g.id, status: g.status, roundNumber: g.round_number, maxRounds: g.max_rounds, autopilot: g.autopilot ?? false,
 });
 
 /** Leaderboard sorted by tokens, then correct picks (the announced tie-break). */

@@ -64,7 +64,7 @@ export function toRawState(ui: UiGameState): StateResponse {
     game: {
       id: "mock-game",
       status: ui.game.status === "lobby" ? "LOBBY" : ui.game.status === "game_over" ? "GAME_OVER" : "IN_PROGRESS",
-      roundNumber: ui.game.roundNumber, maxRounds: ui.game.maxRounds,
+      roundNumber: ui.game.roundNumber, maxRounds: ui.game.maxRounds, autopilot: false,
     },
     round,
     case: round ? kase : null,

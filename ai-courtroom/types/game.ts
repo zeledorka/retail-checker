@@ -59,7 +59,7 @@ export type PublicRound = {
 export type StateResponse = {
   version: number;
   serverNow: string; // clients compute clock offset; phone clocks drift
-  game: { id: string; status: GameStatus; roundNumber: number; maxRounds: number };
+  game: { id: string; status: GameStatus; roundNumber: number; maxRounds: number; autopilot: boolean }; // autopilot = the server advances the game on /api/state polls
   round: PublicRound | null;
   case: Case | null;
   publicMessages: PublicMessage[];
@@ -87,6 +87,8 @@ export type LeaderboardResponse = { players: LeaderboardEntry[] };
 export type ResetResponse = { gameId: string };
 /** POST /api/admin/cancel — refunded = number of players whose stake was returned (0 on a repeat call). */
 export type CancelResponse = { cancelled: true; refunded: number };
+/** POST /api/admin/autopilot { enabled } (also switched on by /api/admin/start, off by reset). */
+export type AutopilotResponse = { autopilot: boolean };
 
 export type ErrorCode =
   | 'UNAUTHENTICATED' | 'NOT_JOINED' | 'BAD_REQUEST' | 'BETTING_CLOSED' | 'ALREADY_BET'

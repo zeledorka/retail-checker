@@ -26,7 +26,7 @@ export type CheckerOpinion = { id: string; title: string; explanation: string; s
 export type CheckerFlag = "ok" | "speculative" | "unsupported" | "contradicted" | "implausible";
 export type CheckerAssessment = { id: string; defensibility: number; flag: CheckerFlag; note: string };
 export type PairJudgement = { a: string; b: string; difference: number; meaningful: boolean };
-export type CheckerReport = { assessments: CheckerAssessment[]; equivalenceGroups: string[][]; pairs: PairJudgement[] };
+export type CheckerReport = { assessments: CheckerAssessment[]; equivalenceGroups: string[][]; pairs: PairJudgement[]; /** harmless structural repairs made locally (e.g. a dropped empty placeholder entry); never a changed judgment */ normalisations?: string[] };
 export type CheckResult = { ok: true; report: CheckerReport; telemetry?: CallTelemetry } | { ok: false; error: StageError };
 export interface OpinionChecker {
   check(request: { scenario: ScenarioInput; opinions: CheckerOpinion[] }): Promise<CheckResult>;

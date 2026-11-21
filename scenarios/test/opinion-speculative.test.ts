@@ -123,13 +123,14 @@ test("REPLAY of saved live benchmark dumps (selector only, no model call): the r
   assert.ok(files.length >= 1);
   const out: string[] = [];
   for (const f of files) {
-    const d = JSON.parse(readFileSync(new URL(f, dir), "utf8")) as { dumps: { scenario: string; result: { ok: boolean; meta?: { seed: number; generated: Record<"A" | "B", GeneratedOpinion[]>; checkerOrder: { opinionId: string; anonId: string }[]; checkerReport: CheckerReport }; partial?: { seed: number; generated: Record<"A" | "B", GeneratedOpinion[]>; checkerOrder: { opinionId: string; anonId: string }[]; checkerReport: CheckerReport } } }[] };
+    const d = JSON.parse(readFileSync(new URL(f, dir), "utf8")) as { dumps: { scenario: string; result: { ok: boolean; selection?: { diagnostics: { options: { minDefensibility: number } } }; meta?: { seed: number; generated: Record<"A" | "B", GeneratedOpinion[]>; checkerOrder: { opinionId: string; anonId: string }[]; checkerReport: CheckerReport }; partial?: { seed: number; generated: Record<"A" | "B", GeneratedOpinion[]>; checkerOrder: { opinionId: string; anonId: string }[]; checkerReport: CheckerReport } } }[] };
     for (const x of d.dumps) {
       const m = x.result.meta ?? x.result.partial!;
       const run = (min: number) => selectFinalPair({ opinionsA: m.generated.A, opinionsB: m.generated.B, checkerOrder: m.checkerOrder, report: m.checkerReport }, { seed: m.seed, minDefensibility: min });
-      const old = run(45);
+      const recorded = (x.result.meta as { selection?: { diagnostics: { options: { minDefensibility: number } } } } | undefined)?.selection?.diagnostics.options.minDefensibility ?? x.result.selection?.diagnostics.options.minDefensibility ?? 45;
+      const old = run(recorded);
       const now = run(30);
-      assert.equal(old.ok, x.result.ok, `${f} ${x.scenario}: the old-threshold replay must reproduce the recorded outcome`);
+      assert.equal(old.ok, x.result.ok, `${f} ${x.scenario}: replaying at the recorded threshold (${recorded}) must reproduce the recorded outcome`);
       assert.ok(now.ok, `${f} ${x.scenario}`);
       out.push(`${x.scenario}: recorded ${x.result.ok ? "success" : "failure"} -> threshold 30 selector-only replay ${now.ok ? "success" : "failure"}`);
     }

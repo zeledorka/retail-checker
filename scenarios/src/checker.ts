@@ -16,7 +16,7 @@ export const CHECKER_SYSTEM = [
   "Defensibility is the ability to construct a coherent, evidence-consistent argument for the interpretation. It is NOT the probability that the explanation is correct. Score by this scale: 0-19 implausible, contradictory or not meaningfully connected to the case; 20-29 extremely speculative with little basis for a coherent argument; 30-44 speculative but reasonably arguable; 45-69 a plausible interpretation with some supporting evidence; 70-100 strongly defensible. Use the same standard for every opinion. Do not inflate or deflate scores, and do not adjust them to make opinions look balanced or opposed.",
   'Flags. "ok": plausible, consistent with the evidence, may need ordinary inference. "speculative": plausible but requires unverified assumptions, is not conclusively supported, yet could reasonably explain the observations (it stays eligible; score it 30 or more if a coherent argument can be built). "contradicted": the evidence shows it could not have happened. "implausible": it needs an implausible causal mechanism or depends on fabricated facts presented as established evidence. Only "contradicted" and "implausible" make an opinion ineligible.',
   'Absence of supporting evidence is NOT contradiction. Distinguish "there is no evidence proving this happened" (speculative at most) from "the evidence shows this could not have happened" (contradicted). An unverified actor, motive or mechanism is not by itself a reason to flag or to score low. Missing information is a gap, not a contradiction; the absence of something that would only happen later does not contradict an earlier plan.',
-  "You receive six opinions (o1..o6). Return:",
+  "You receive six opinions with the anonymous ids o1, o2, o3, o4, o5 and o6, and the request repeats them. These six are the ONLY valid ids: there is no o7 and no other id, so never add an extra, empty, filler or placeholder entry anywhere. Return exactly six assessments (one per id, each id once), and exactly 15 pairs (every unordered pair of the six ids once). Before replying, count them. Return:",
   '1. "assessments": one entry for EVERY opinion with "defensibility" (0-100, scale above), "flag" ("ok", "speculative", "contradicted" or "implausible") and a "note" of at most 15 words.',
   '2. "equivalenceGroups": lists of opinion ids that describe the SAME underlying explanation (same cause and mechanism) however differently worded; different actors performing essentially the same act are the same explanation. Only groups of two or more; an id appears in at most one group.',
   '3. "pairs": an entry for EVERY unordered pair of the six opinions (15 pairs): "difference" (0-100, how different their central causal explanations really are) and "meaningful" (true only if the two could form a substantive disagreement that a debate can turn on; false for differences of wording, emphasis, level of detail or terminology). Opinions in the same equivalence group have difference below 20 and meaningful false. Two different speculative explanations can be a meaningful pair.',
@@ -43,6 +43,7 @@ export function buildCheckerPrompt(scenario: ScenarioInput, opinions: CheckerOpi
     `SCENARIO:\n${scenario.description}`,
     `EVIDENCE:\n${scenario.evidence.map((e) => `${e.id}: ${e.text}`).join("\n")}`,
     `OPINIONS (anonymous, in random order):\n${opinions.map((o) => `${o.id} | ${o.title}\n  explanation: ${o.explanation}\n  cites: ${o.supportingEvidenceIds.join(", ")}\n  weaknesses: ${o.weaknesses}`).join("\n")}`,
+    `VALID IDS (use only these): ${opinions.map((o) => o.id).join(", ")}. That is exactly ${opinions.length} assessments and exactly ${(opinions.length * (opinions.length - 1)) / 2} pairs. Do not add any other id.`,
     "Return the JSON now.",
   ].join("\n\n");
 }
@@ -54,13 +55,24 @@ export function validateCheckerReport(raw: unknown, anonIds: string[]): { ok: tr
   const o = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
   const ids = new Set(anonIds);
   const errors: string[] = [];
+  const normalisations: string[] = []; // harmless structural differences repaired locally; every one is reported, none changes a judgment
+  const clean = (x: unknown) => (typeof x === "string" ? x.trim().toLowerCase() : x);
+  const isPlaceholder = (a: Record<string, unknown> | undefined) => !!a && a.defensibility === 0 && a.flag === "ok" && (a.note === undefined || a.note === "");
   const assessments: CheckerAssessment[] = [];
   if (!Array.isArray(o.assessments)) errors.push("assessments is not a list");
   else {
     const seen = new Set<string>();
     for (const a of o.assessments as Record<string, unknown>[]) {
-      const id = a?.id;
+      const id = clean(a?.id);
+      if (typeof a?.id === "string" && id !== a.id) normalisations.push(`assessment id "${a.id}" read as "${id}"`);
+      if (typeof id === "string" && !ids.has(id) && isPlaceholder(a)) {
+        // An empty filler entry (score 0, flag ok, no note) for an id that does not exist carries no judgment. It is dropped, never mapped to another opinion;
+        // completeness of the six real assessments is still required below.
+        normalisations.push(`dropped placeholder assessment for unknown id "${id}"`);
+        continue;
+      }
       if (typeof id !== "string" || !ids.has(id)) errors.push(`assessment for unknown id "${String(id)}"`);
+      else if (seen.has(id) && assessments.some((x) => x.id === id && x.defensibility === a.defensibility && x.flag === a.flag && x.note === (typeof a.note === "string" ? a.note.slice(0, 200) : ""))) normalisations.push(`dropped an identical repeat of the assessment for ${id}`);
       else if (seen.has(id)) errors.push(`duplicate assessment for ${id}`);
       else {
         seen.add(id);
@@ -75,7 +87,8 @@ export function validateCheckerReport(raw: unknown, anonIds: string[]): { ok: tr
   if (!Array.isArray(o.equivalenceGroups)) errors.push("equivalenceGroups is not a list");
   else {
     const inGroup = new Set<string>();
-    for (const g of o.equivalenceGroups as unknown[]) {
+    for (const g0 of o.equivalenceGroups as unknown[]) {
+      const g = Array.isArray(g0) ? g0.map(clean) : g0;
       if (!Array.isArray(g) || g.length < 2 || g.some((x) => typeof x !== "string" || !ids.has(x)) || new Set(g).size !== g.length) errors.push("an equivalence group must list two or more distinct known ids");
       else if ((g as string[]).some((x) => inGroup.has(x))) errors.push("an id appears in more than one equivalence group");
       else {
@@ -90,13 +103,15 @@ export function validateCheckerReport(raw: unknown, anonIds: string[]): { ok: tr
   else {
     const seen = new Set<string>();
     for (const p of o.pairs as Record<string, unknown>[]) {
-      const a = p?.a;
-      const b = p?.b;
+      const a = clean(p?.a);
+      const b = clean(p?.b);
       if (typeof a !== "string" || typeof b !== "string" || !ids.has(a) || !ids.has(b) || a === b) errors.push(`pair (${String(a)}, ${String(b)}) is not two different known ids`);
       else if (typeof p.difference !== "number" || !Number.isFinite(p.difference) || p.difference < 0 || p.difference > 100 || typeof p.meaningful !== "boolean") errors.push(`pair ${a}/${b}: difference must be 0-100 and meaningful a boolean`);
       else {
         const key = [a, b].sort().join("|");
-        if (seen.has(key)) errors.push(`pair ${a}/${b} listed twice`);
+        const same = pairs.find((x) => [x.a, x.b].sort().join("|") === key);
+        if (seen.has(key) && same && same.difference === p.difference && same.meaningful === p.meaningful) normalisations.push(`dropped an identical repeat of pair ${a}/${b}`);
+        else if (seen.has(key)) errors.push(`pair ${a}/${b} listed twice`);
         else {
           seen.add(key);
           pairs.push({ a, b, difference: p.difference, meaningful: p.meaningful });
@@ -105,7 +120,7 @@ export function validateCheckerReport(raw: unknown, anonIds: string[]): { ok: tr
     }
     if (!errors.length && pairs.length !== expected) errors.push(`expected ${expected} pairs, got ${pairs.length}`);
   }
-  return errors.length ? { ok: false, errors } : { ok: true, report: { assessments, equivalenceGroups: groups, pairs } };
+  return errors.length ? { ok: false, errors } : { ok: true, report: { assessments, equivalenceGroups: groups, pairs, ...(normalisations.length ? { normalisations } : {}) } };
 }
 
 export function parseCheckerReply(raw: string, anonIds: string[]): { ok: true; report: CheckerReport } | { ok: false; message: string; errors: string[] } {

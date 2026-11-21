@@ -20,3 +20,15 @@ export { selectFinalPair, DEFAULT_SELECTION } from "./opinion-selector";
 export { prepareScenario } from "./prepare-opinions";
 export { analyseRun } from "./opinion-diagnostics";
 export type { PartialMeta } from "./opinion-types";
+
+// ---- Full pre-round pipeline: new scenario + image + independent opinions ----
+export { SCENARIO_MODEL, SCENARIO_SYSTEM, SCENARIO_LIMITS, SCENARIO_ASKED, buildScenarioPrompt, generateNewScenario, pickHints, validateDesignedScenario } from "./scenario-design";
+export type { ScenarioDesign, ScenarioGenResult } from "./scenario-design";
+export { createOpenRouterImageGenerator, buildImagePrompt, decodeImageResponse, saveImageLocally, toImageInfo, verifyImageModel, DEFAULT_IMAGE_MODEL, IMAGE_ASPECT_RATIO } from "./image";
+export type { ImageAsset, ImageInfo, ImageGenerator, ImageResult, ImageError, ImageTelemetry } from "./image";
+export { prepareNewRound } from "./prepare-new-round";
+export type { PrepareNewRoundOptions, PrepareNewRoundResult, PreparedRound, PrepareNewRoundFailure, AttemptLog, RoundRequests, RoundTiming, RoundUsage } from "./prepare-new-round";
+export { buildAudience, eligibleAt, DEFAULT_SCHEDULE } from "./audience-sim";
+export type { SimulatedAudience, SubmissionKind } from "./audience-sim";
+export { runCompleteGame } from "./complete-game";
+export type { CompleteGameOptions, CompleteGameReport, Check } from "./complete-game";

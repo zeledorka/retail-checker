@@ -11,7 +11,9 @@
     "example:mock": "tsx examples/mock-preparation.ts",
     "generate:live": "tsx scripts/generate-live.ts",
     "evaluate:live": "tsx scripts/evaluate-live.ts",
-    "benchmark:opinions": "tsx scripts/benchmark-opinions.ts"
+    "benchmark:opinions": "tsx scripts/benchmark-opinions.ts",
+    "benchmark:full": "tsx scripts/benchmark-full-generation.ts",
+    "benchmark:game": "tsx scripts/benchmark-complete-game.ts"
   },
   "dependencies": {
     "zod": "^4.6.7"

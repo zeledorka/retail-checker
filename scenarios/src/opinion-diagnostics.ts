@@ -49,6 +49,7 @@ export function analyseRun(p: PartialMeta, selection?: OpinionSelectionDiagnosti
     if (suspect.length) lines.push(`Possible missing-evidence-treated-as-contradiction (read the notes): ${suspect.map((a) => `${a.id}[${a.flag}]`).join(", ")}`);
     const lowButOk = r.assessments.filter((a) => a.flag === "ok" && a.defensibility < min).length;
     signals.flaggedOkButBelowThreshold = lowButOk;
+    if (r.normalisations?.length) lines.push(`Local normalisations of the checker reply (structure only, no judgment changed): ${r.normalisations.join("; ")}`);
     lines.push(`Equivalence groups: ${r.equivalenceGroups.length ? r.equivalenceGroups.map((g) => `{${g.map((id) => `${id}=${opinionOf.get(id)}`).join(", ")}}`).join(" ") : "none"}`);
     lines.push("All pair judgements (difference / meaningful):");
     for (const x of r.pairs) lines.push(`  ${x.a}(${opinionOf.get(x.a)}) vs ${x.b}(${opinionOf.get(x.b)}): ${x.difference} / ${x.meaningful}`);

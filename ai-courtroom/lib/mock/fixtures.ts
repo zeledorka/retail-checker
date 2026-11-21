@@ -44,6 +44,15 @@ export const MOCK_VERDICT: Record<Side, JudgeVerdict> = {
       B: { evidence: 6, logic: 7, rebuttal: 6, persuasion: 7 },
     },
     overall: { A: 7.5, B: 6.5 },
+    strengths: {
+      A: ["Tied the stain's timing to the decorations being stored", "Turned the 'sticky' detail into support for corn-syrup fake blood"],
+      B: ["Pressed hard on the restricted key access", "Kept asking why a prop container was never found"],
+    },
+    weaknesses: {
+      A: ["Assumed the floor is mopped nightly without evidence"],
+      B: ["Never identified an injury, victim or weapon", "Leaned on 'panic' as a motive with no support"],
+    },
+    decisiveExchange: { refs: ["E7", "E8"], description: "A's demand for an injury or victim went unanswered by B." },
   },
   B: {
     winner: "B",
@@ -55,6 +64,15 @@ export const MOCK_VERDICT: Record<Side, JudgeVerdict> = {
       B: { evidence: 7, logic: 8, rebuttal: 8, persuasion: 7 },
     },
     overall: { A: 6, B: 7.5 },
+    strengths: {
+      A: ["Clear, simple opening anchored to the Halloween timing"],
+      B: ["Built a consistent chain from key access to the partial clean-up", "Exposed the missing prop container"],
+    },
+    weaknesses: {
+      A: ["Rebuttals relied on routine cleaning that is not in the evidence", "Did not answer the key-access point"],
+      B: ["The 'sticky means dried blood' claim is contestable"],
+    },
+    decisiveExchange: { refs: ["E5", "E6"], description: "B's challenge on the missing fake-blood container was never answered." },
   },
 };
 

@@ -10,7 +10,7 @@ import { PhaseBanner } from "@/components/PhaseBadge";
 import { CaseCard } from "@/components/CaseCard";
 import { PositionCard, PositionsPanel } from "@/components/PositionsPanel";
 import { SpeechBubble, ThinkingBubble } from "@/components/SpeechBubble";
-import { IncompleteNotice, ScoreBars, WinnerReveal } from "@/components/VerdictPanel";
+import { IncompleteNotice, JudgeNotes, ScoreBars, WinnerBanner } from "@/components/VerdictPanel";
 import { Podium } from "@/components/Leaderboard";
 import { AgentIcon, SIDE } from "@/components/sides";
 import { HostDock, UnlockDialog } from "@/components/HostDock";
@@ -169,20 +169,26 @@ function Stage({ state, joinUrl }: { state: UiGameState; joinUrl: string }) {
     case "results": {
       const v = state.verdict;
       if (!v) return <div className="grid h-full place-items-center text-7xl font-black">Settling bets…</div>;
+      // Everything fits one 16:9 screen: short banner + score bars on top, the full reasoning in the remaining
+      // space (font scales with its length, and it scrolls inside its own panel as a last resort: never clipped).
+      // The leaderboard sits in its own column beside the verdict and never covers it. Stays until the next round.
+      const words = (v.explanation + " " + [...(v.strengths?.A ?? []), ...(v.strengths?.B ?? []), ...(v.weaknesses?.A ?? []), ...(v.weaknesses?.B ?? [])].join(" ")).split(/\s+/).length;
+      const textSize = words > 220 ? "text-[clamp(0.85rem,1vw,1.25rem)]" : words > 130 ? "text-[clamp(0.95rem,1.15vw,1.5rem)]" : "text-[clamp(1.05rem,1.35vw,1.8rem)]";
       return (
-        <div className="grid h-full grid-cols-[3fr_2fr] gap-10">
-          <div className="flex min-h-0 flex-col gap-5">
-            <WinnerReveal v={v} big />
+        <div className="grid h-full min-h-0 grid-cols-[2.2fr_1fr] gap-8">
+          <div className="flex min-h-0 flex-col gap-4">
+            <WinnerBanner v={v} />
             <IncompleteNotice v={v} big />
             <ScoreBars v={v} big />
-            <div className="card min-h-0 overflow-hidden p-6 text-2xl font-bold">
-              <p className="text-lg font-black uppercase tracking-widest text-court">Judge&apos;s reasoning</p>
+            <div className={`card flex min-h-0 flex-1 flex-col overflow-y-auto p-5 font-bold leading-snug ${textSize}`}>
+              <p className="text-[0.75em] font-black uppercase tracking-widest text-court">Judge&apos;s reasoning</p>
               <p className="mt-1">{v.explanation}</p>
+              <JudgeNotes v={v} className="mt-3 text-[0.85em]" />
             </div>
           </div>
-          <div className="animate-slide-up" style={{ animationDelay: "1.2s" }}>
-            <p className="mb-4 text-center text-4xl font-black">🏆 Leaderboard</p>
-            <Podium entries={state.leaderboard} big maxRest={4} />
+          <div className="flex min-h-0 flex-col overflow-hidden">
+            <p className="mb-3 text-center text-4xl font-black">🏆 Leaderboard</p>
+            <Podium entries={state.leaderboard} big maxRest={3} />
           </div>
         </div>
       );

@@ -22,6 +22,47 @@ export function WinnerReveal({ v, big = false }: { v: UiVerdict; big?: boolean }
   );
 }
 
+/** Horizontal, short winner banner for the projector so the rest of the verdict fits on one 16:9 screen. */
+export function WinnerBanner({ v }: { v: UiVerdict }) {
+  const s = SIDE[v.winner];
+  return (
+    <div className={`animate-pop flex items-center gap-5 rounded-3xl px-6 py-4 text-white shadow-[0_8px_0_rgba(0,0,0,0.3)] ${s.bg}`}>
+      <AgentIcon side={v.winner} className="h-16 w-16 shrink-0" />
+      <div className="min-w-0">
+        <p className="text-[clamp(0.9rem,1.1vw,1.4rem)] font-black uppercase tracking-[0.25em] text-white/80">⚖️ The court finds for</p>
+        <p className="text-[clamp(2.2rem,3.6vw,4.5rem)] font-black leading-none">{s.name}</p>
+      </div>
+      {v.summary && <p className="ml-auto max-w-[45%] text-right text-[clamp(1rem,1.4vw,1.8rem)] font-bold leading-snug text-white/90">{v.summary}</p>}
+    </div>
+  );
+}
+
+/** Per-side strengths / weaknesses and the decisive exchange, if the verdict has them. Never truncated. */
+export function JudgeNotes({ v, className = "" }: { v: UiVerdict; className?: string }) {
+  const has = v.strengths || v.weaknesses || v.decisiveExchange;
+  if (!has) return null;
+  return (
+    <div className={`grid gap-3 ${className}`}>
+      {(v.strengths || v.weaknesses) && (
+        <div className="grid grid-cols-2 gap-4">
+          {(["A", "B"] as const).map((side) => (
+            <div key={side} className={`rounded-xl border-l-8 bg-gray-50 p-3 ${SIDE[side].border}`}>
+              <p className={`flex items-center gap-1.5 font-black ${SIDE[side].text}`}>
+                <AgentIcon side={side} className="h-4 w-4" color={SIDE[side].hex} /> {SIDE[side].name}
+              </p>
+              <ul className="mt-1 grid gap-0.5">
+                {v.strengths?.[side]?.map((t, i) => <li key={`s${i}`}>✅ {t}</li>)}
+                {v.weaknesses?.[side]?.map((t, i) => <li key={`w${i}`}>⚠️ {t}</li>)}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+      {v.decisiveExchange && <p><span className="font-black text-court">Decisive moment:</span> {v.decisiveExchange.description}</p>}
+    </div>
+  );
+}
+
 export function IncompleteNotice({ v, big = false }: { v: UiVerdict; big?: boolean }) {
   if (v.complete) return null;
   return (

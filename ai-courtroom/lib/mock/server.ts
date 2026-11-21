@@ -135,6 +135,7 @@ function buildState(s: MockStore, playerId: string | null, now: number): UiGameS
   const verdict: UiVerdict | null = phase === "results"
     ? {
         winner: v.winner, explanation: v.explanation, summary: v.summary, scores: v.scores, overall: v.overall,
+        strengths: v.strengths, weaknesses: v.weaknesses, decisiveExchange: v.decisiveExchange,
         complete: s.variant !== "incomplete", turnsCompleted, maxTurns: MAX_TURNS,
       }
     : null;

@@ -54,6 +54,10 @@ export type UiVerdict = {
   /** Four dimensions 0-10 per agent. null when the backend does not expose them yet. */
   scores: Record<Side, CriterionScores> | null;
   overall?: Record<Side, number>;
+  /** Per-side judge notes (JudgeVerdict.strengths / weaknesses). The judge has no per-dimension explanations. */
+  strengths?: Record<Side, string[]>;
+  weaknesses?: Record<Side, string[]>;
+  decisiveExchange?: { refs: string[]; description: string };
   /** false = judged on a partial transcript (debate cut short). */
   complete: boolean;
   turnsCompleted: number;

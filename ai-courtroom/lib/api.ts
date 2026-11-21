@@ -33,7 +33,12 @@ type BStateResponse = {
     // Optional sequential-design fields we hope Dev 3 adds (TODO: confirm against backend):
     transcript?: PublicArgument[];
     turnsCompleted?: number; maxTurns?: number;
-    verdict?: { winner: BSide; explanation: string; summary?: string; scores: Record<BSide, { evidence: number; logic: number; rebuttal: number; persuasion: number }>; overall?: Record<BSide, number>; complete?: boolean; turnsCompleted?: number };
+    verdict?: {
+      winner: BSide; explanation: string; summary?: string;
+      scores: Record<BSide, { evidence: number; logic: number; rebuttal: number; persuasion: number }>; overall?: Record<BSide, number>;
+      strengths?: Record<BSide, string[]>; weaknesses?: Record<BSide, string[]>; decisiveExchange?: { refs: string[]; description: string };
+      complete?: boolean; turnsCompleted?: number;
+    };
     betTotals?: Record<BSide, { players: number; tokens: number }>;
   };
   case: null | { id: string; scenario: string; imageUrl: string; hypothesisA: string; hypothesisB: string; evidence: string[]; title?: string };
@@ -70,7 +75,11 @@ export function adaptState(b: BStateResponse): UiGameState {
   const revealed = phase === "results" && !!r?.winner;
   const verdict = revealed && r
     ? r.verdict
-      ? { ...r.verdict, complete: r.verdict.complete ?? true, turnsCompleted: r.verdict.turnsCompleted ?? turnsCompleted, maxTurns }
+      ? {
+          winner: r.verdict.winner, explanation: r.verdict.explanation, summary: r.verdict.summary, scores: r.verdict.scores, overall: r.verdict.overall,
+          strengths: r.verdict.strengths, weaknesses: r.verdict.weaknesses, decisiveExchange: r.verdict.decisiveExchange,
+          complete: r.verdict.complete ?? true, turnsCompleted: r.verdict.turnsCompleted ?? turnsCompleted, maxTurns,
+        }
       : { winner: r.winner!, explanation: r.rationale ?? "", scores: null, complete: true, turnsCompleted, maxTurns } // TODO: backend has no 4-dim scores / complete flag yet
     : null;
 

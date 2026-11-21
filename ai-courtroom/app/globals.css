@@ -67,18 +67,12 @@ body {
 }
 @keyframes waiting-slide { 0% { transform: translateX(-100%) } 100% { transform: translateX(250%) } }
 
-/* Projector winner confetti. Plain CSS on purpose: keyframes inside @theme are dropped by Tailwind unless an
-   --animate-* token uses them, which left the pieces frozen at the top of the screen. */
-@keyframes confetti-fall { 0% { transform: translateY(-10vh) rotate(0deg); opacity: 1 } 100% { transform: translateY(110vh) rotate(720deg); opacity: 0.9 } }
-.confetti > span { transform: translateY(-10vh); } /* start off-screen, never a static row at the top */
-
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { scrollbar-width: none; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; }
   .reveal-text { animation: none; }
-  .confetti { display: none; }
   /* Static striped bar instead of a sliding one. */
   .waiting-bar::after {
     animation: none !important; width: 100%;

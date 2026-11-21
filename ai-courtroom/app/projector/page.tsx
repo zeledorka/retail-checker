@@ -337,39 +337,21 @@ function AgentScoreCard({ v, side }: { v: UiVerdict; side: Side }) {
 function WinnerScreen({ v, state }: { v: UiVerdict; state: UiGameState }) {
   const s = SIDE[v.winner];
   return (
-    // min-h-full (not h-full) + no overflow-hidden: if the leaderboard is taller than the screen, the courtroom
-    // section scrolls instead of clipping. Confetti is pointer-events-none so it never blocks the wheel.
-    <div className="relative grid min-h-full grid-cols-[1fr_1.15fr] gap-10">
-      <Confetti />
-      <div className="flex flex-col items-center justify-center">
-        <div className={`animate-pop w-full rounded-[2.5rem] p-10 text-center text-white shadow-[0_12px_0_rgba(0,0,0,0.3)] ${s.bg}`}>
-          <AgentIcon side={v.winner} className="mx-auto h-40 w-40 animate-float" />
-          <p className="mt-4 text-[clamp(3rem,5.5vw,7rem)] font-black leading-none drop-shadow-[0_6px_0_rgba(0,0,0,0.25)]">{s.name}</p>
-          <p className="mt-2 text-[clamp(2rem,3.4vw,4.2rem)] font-black">WINS THE CASE! 🎉</p>
-          {v.summary && <p className="mt-4 text-[clamp(1.1rem,1.5vw,1.9rem)] font-bold text-white/90">{v.summary}</p>}
+    // Winner banner on top, leaderboard below. min-h-full (not h-full): if the leaderboard is taller than the
+    // screen, the courtroom section scrolls instead of clipping.
+    <div className="mx-auto flex min-h-full max-w-6xl flex-col gap-6 pb-4">
+      <div className={`animate-pop flex items-center justify-center gap-6 rounded-3xl px-8 py-5 text-white shadow-[0_10px_0_rgba(0,0,0,0.3)] ${s.bg}`}>
+        <AgentIcon side={v.winner} className="h-20 w-20 shrink-0" />
+        <div className="text-center">
+          <p className="text-[clamp(2.2rem,4vw,5rem)] font-black leading-none drop-shadow-[0_6px_0_rgba(0,0,0,0.25)]">{s.name} wins the case!</p>
+          {v.summary && <p className="mt-2 text-[clamp(1rem,1.4vw,1.75rem)] font-bold text-white/90">{v.summary}</p>}
         </div>
+        <AgentIcon side={v.winner} className="h-20 w-20 shrink-0" />
       </div>
-      <div className="flex flex-col pb-4">
+      <div className="flex flex-col">
         <p className="mb-3 text-center text-5xl font-black">🏆 Leaderboard</p>
         <Podium entries={state.leaderboard} big maxRest={5} showDeltas />
       </div>
-    </div>
-  );
-}
-
-const CONFETTI_COLORS = ["#e21b3c", "#1368ce", "#ffa602", "#26890c", "#ffffff"];
-/** Simple CSS confetti; hidden entirely under prefers-reduced-motion (.confetti in globals.css). */
-function Confetti() {
-  return (
-    <div className="confetti pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
-      {Array.from({ length: 48 }, (_, i) => (
-        <span key={i} className="absolute top-0 block h-4 w-2.5 rounded-sm"
-          style={{
-            left: `${(i * 37) % 100}%`,
-            background: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
-            animation: `confetti-fall ${3 + (i % 5) * 0.6}s linear ${(i % 12) * 0.35}s infinite`,
-          }} />
-      ))}
     </div>
   );
 }

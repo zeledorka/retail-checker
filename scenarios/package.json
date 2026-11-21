@@ -1,0 +1,24 @@
+{
+  "name": "ai-courtroom-scenarios",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AI Courtroom pre-round preparation: scenario cases, random personalities, independent opinion ranking and deterministic selection of two locked interpretations.",
+  "engines": { "node": ">=20.12" },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts",
+    "example:mock": "tsx examples/mock-preparation.ts",
+    "generate:live": "tsx scripts/generate-live.ts",
+    "evaluate:live": "tsx scripts/evaluate-live.ts",
+    "benchmark:opinions": "tsx scripts/benchmark-opinions.ts"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

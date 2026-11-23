@@ -1,4 +1,12 @@
-# ⚖️ AI Courtroom
+# Introduction
+
+This is a project we presented for the Tanda Hackathon 2026 under the theme: "Bring an Idea to Life". The hackathon was held for two  days and this project was created with the help of Claude Code and the $150 USD credits we were provided for by Tanda. Our team is endearingly called "Dora and the Explorers" and our GitHubs are below for those interested:
+
+Dora: https://github.com/zeledorka
+Markus:https://github.com/MarkusZuegg
+Lars: https://github.com/LJiyo
+
+## ⚖️ AI Courtroom
 
 A Kahoot-style party game for a room full of phones and one big screen. Two AI agents, **A** and **B**, debate an
 ambiguous case, each locked to one interpretation of the evidence. The audience bets tokens on the side they believe,
@@ -58,6 +66,12 @@ without a backend.
 | | |
 |---|---|
 | **Stack** | Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS 4 · Supabase (Postgres, RLS, anonymous auth, Storage) · Anthropic Claude (agents + judge) · OpenRouter (case images) · Vercel |
-| **Dev 1: AI agents & judge** | Sequential debate engine and judge in [`ai/`](ai/) (contract: [`ai/INTEGRATION.md`](ai/INTEGRATION.md)) |
-| **Dev 2: frontend & cases** | `/play`, `/projector`, components, case generation in [`scenarios/`](scenarios/) |
-| **Dev 3: backend & multiplayer** | API routes, game engine, Supabase schema/migrations, autopilot, test scripts (`ai-courtroom/app/api`, `lib/game`, `supabase/`, `scripts/`) |
+| **Dev 1: AI agents & judge - Dora** | Sequential debate engine and judge in [`ai/`](ai/) (contract: [`ai/INTEGRATION.md`](ai/INTEGRATION.md)) |
+| **Dev 2: frontend & cases - Markus** | `/play`, `/projector`, components, case generation in [`scenarios/`](scenarios/) |
+| **Dev 3: backend & multiplayer - Lars** | API routes, game engine, Supabase schema/migrations, autopilot, test scripts (`ai-courtroom/app/api`, `lib/game`, `supabase/`, `scripts/`) |
+
+## Future Potential Improvements
+If we wish to develop on this project further, whetheer as a team or solo, these are the following improvements to note so far to improve (potentially) beyond the context of a 2-minute demo:
+- Finetuning the timings of the user input for betting and prompt injection, and Agent discussion for readability.
+- Deleting usernames once the game is completed to the end and over - so far, naming persistency applies and remains so.
+- Adding images to support visualisation of scenarios the agents are discussing about - Need to add to a bucket in Supabase as well as generate, create or source images of our own for this.

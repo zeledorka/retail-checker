@@ -5,9 +5,9 @@ ambiguous case, each locked to one interpretation of the evidence. The audience 
 sends **one clue** to the agent they backed, and an **independent AI judge** (which never sees bets or clues) scores the
 debate and picks a winner. Correct bets pay **2× the stake**. A game is **5 rounds**; highest token balance wins.
 
-**Live demo:** <https://retail-checker.vercel.app>
-- [`/projector`](https://retail-checker.vercel.app/projector): the big screen (case, debate, verdict, leaderboard, join QR)
-- [`/play`](https://retail-checker.vercel.app/play): players' phones (or scan the QR on the projector)
+**Live demo:** <https://ai-courtroom-game.vercel.app>
+- [`/projector`](https://ai-courtroom-game.vercel.app/projector): the big screen (case, debate, verdict, leaderboard, join QR)
+- [`/play`](https://ai-courtroom-game.vercel.app/play): players' phones (or scan the QR on the projector)
 
 ## How to play
 
